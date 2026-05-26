@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../widgets/atelier_bottom_nav.dart';
+
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
 
@@ -10,11 +12,8 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   static const _bg = Color(0xFF131313);
-  static const _top = Color(0xFF080808);
   static const _title = Color(0xFFF5F0E8);
-  static const _muted = Color(0xFF9A8F80);
   static const _luxGold = Color(0xFFB8963E);
-  static const _card = Color(0xFF2A2420);
   static const double _phoneWidth = 390;
 
   int _tab = 0; // 0 all, 1 orders, 2 offers, 3 arrivals
@@ -25,20 +24,22 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       backgroundColor: _bg,
       body: SafeArea(
         bottom: false,
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: _phoneWidth),
-            child: Column(
-              children: [
-                _TopBar(
-                  onBack: () => Navigator.of(context).maybePop(),
-                ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 48),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
+        child: Stack(
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: _phoneWidth),
+                child: Column(
+                  children: [
+                    _TopBar(
+                      onBack: () => Navigator.of(context).maybePop(),
+                    ),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 96),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
@@ -109,7 +110,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                           body:
                               'The Autumn/Winter Edit has arrived.\nDiscover structural silhouettes and\nrich textures.',
                           cta: 'VIEW COLLECTION',
-                          thumb: 'assets/images/search_cat_men.png',
+                          thumb: 'assets/images/search_edit_quiet.png',
                         ),
                       ],
                     ),
@@ -118,6 +119,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               ],
             ),
           ),
+        ),
+        Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: SafeArea(
+                top: false,
+                child: AtelierBottomNavBar.dock(
+                  activeIndex: -1,
+                  onTap: (i) => AtelierBottomNav.go(context, i),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

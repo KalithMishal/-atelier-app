@@ -1,0 +1,86 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function validProductData() {
+      return request.resource.data.keys().hasAll([
+          'name', 'brand', 'categoryId', 'price', 'currency', 'imageUrls', 'description', 'isFeatured'
+        ])
+        && request.resource.data.price is number
+        && request.resource.data.imageUrls is list;
+    }
+
+    // Public catalog read; signed-in users can seed sample products (no Storage needed).
+    match /products/{productId} {
+      allow read: if true;
+      allow create, update: if signedIn() && validProductData();
+      // Required so "Load sample catalogue" can remove old demo docs (e.g. sample-trousers).
+      allow delete: if signedIn();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // User profile
+    match /users/{uid} {
+      allow read, create, update: if isOwner(uid);
+      allow delete: if false;
+
+      match /addresses/{addressId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /wishlist/{productId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // Cart per user
+    match /carts/{uid} {
+      allow read, write: if isOwner(uid);
+
+      match /items/{productId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    function isOrderOwnerField() {
+      return signedIn() && request.resource.data.userId == request.auth.uid;
+    }
+
+    function isOrderOwnerExisting() {
+      return signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Orders (userId on parent + subdocs so batch create works without get() on new parent)
+    match /orders/{orderId} {
+      allow create: if isOrderOwnerField();
+      allow read: if isOrderOwnerExisting();
+      allow update, delete: if false;
+
+      match /items/{itemId} {
+        allow read: if isOrderOwnerExisting()
+          || (signedIn() && get(/databases/$(database)/documents/orders/$(orderId)).data.userId == request.auth.uid);
+        allow create: if isOrderOwnerField();
+        allow update, delete: if false;
+      }
+
+      match /statusEvents/{eventId} {
+        allow read: if isOrderOwnerExisting()
+          || (signedIn() && get(/databases/$(database)/documents/orders/$(orderId)).data.userId == request.auth.uid);
+        allow create: if isOrderOwnerField();
+        allow update, delete: if false;
+      }
+    }
+  }
+}
+

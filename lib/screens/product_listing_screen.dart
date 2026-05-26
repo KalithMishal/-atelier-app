@@ -1,28 +1,34 @@
-import 'dart:ui';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
-
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'filter_drawer_sheet.dart';
-import 'product_detail_screen.dart';
-import 'wishlist_screen.dart';
-import 'profile_screen.dart';
-import 'home_screen.dart';
+import '../state/providers.dart';
+import '../data/models/product.dart';
+import '../config/shop_categories.dart';
+import '../widgets/atelier_bottom_nav.dart';
+import '../widgets/home_product_card.dart';
 
-class ProductListingScreen extends StatefulWidget {
-  const ProductListingScreen({super.key});
+class ProductListingScreen extends ConsumerStatefulWidget {
+  const ProductListingScreen({
+    super.key,
+    this.categoryId,
+    this.subCategoryId,
+    this.title,
+  });
+
+  final String? categoryId;
+  final String? subCategoryId;
+  final String? title;
 
   @override
-  State<ProductListingScreen> createState() => _ProductListingScreenState();
+  ConsumerState<ProductListingScreen> createState() => _ProductListingScreenState();
 }
 
-class _ProductListingScreenState extends State<ProductListingScreen> {
+class _ProductListingScreenState extends ConsumerState<ProductListingScreen> {
   static const _bg = Color(0xFF131313);
   static const _topBarBg = Color.fromRGBO(0, 0, 0, 0.8);
-  static const _card = Color(0xFF2A2420);
   static const _imageBg = Color(0xFF0E0E0E);
-  static const _accent = Color(0xFFB8963E);
   static const _text = Color(0xFFF5F0E8);
   static const _muted = Color(0xFFD0C5B2);
   static const _pillBorder = Color.fromRGBO(77, 70, 55, 0.30);
@@ -33,16 +39,18 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
 
   final _chips = const ['NEW ARRIVALS', 'PRICE', 'SIZE', 'COLOR', 'MATERIAL'];
 
-  final _items = const [
-    _ListingItem('ATELIER', 'Silk Noir\nEvening Gown', '\$1,250', true, 3, 'assets/images/pl_silk_noir_gown.png'),
-    _ListingItem('ATELIER', 'Oversized\nWool Trench', '\$2,800', false, 3, 'assets/images/pl_oversized_wool_trench.png'),
-    _ListingItem('ACCESSORIES', 'Structured\nMonolith Bag', '\$3,400', true, 1, 'assets/images/pl_monolith_bag.png'),
-    _ListingItem('ATELIER', 'Draped Crepe\nTrousers', '\$850', false, 3, 'assets/images/pl_draped_crepe_trousers.png'),
-    _ListingItem('', '', '', false, 0, 'assets/images/pl_gold_jewelry.png'), // partial card row 3
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final productsAsync = ref.watch(allProductsProvider);
+    final all = productsAsync.value ?? [];
+    final filtered = filterProductsForListing(
+      all,
+      categoryId: widget.categoryId,
+      subCategoryId: widget.subCategoryId,
+    );
+    final count = filtered.length;
+    final headerTitle = widget.title?.toUpperCase() ??
+        (widget.categoryId != null ? categoryLabel(widget.categoryId!).toUpperCase() : 'SHOP ALL');
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
@@ -64,12 +72,12 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                         const SizedBox(height: 24),
                         Center(
                           child: Text(
-                            "WOMEN'S\nCOLLECTION",
+                            headerTitle.contains('\n') ? headerTitle : '$headerTitle\nCOLLECTION',
                             textAlign: TextAlign.center,
                             style: GoogleFonts.notoSerif(
-                              fontSize: 30,
-                              height: 36 / 30,
-                              letterSpacing: 3,
+                              fontSize: 28,
+                              height: 1.2,
+                              letterSpacing: 2,
                               color: const Color(0xFFE5E2E1),
                             ),
                           ),
@@ -81,7 +89,7 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
-                                '92 PIECES',
+                                count == 1 ? '1 PIECE' : '$count PIECES',
                                 style: GoogleFonts.plusJakartaSans(
                                   fontSize: 14,
                                   height: 20 / 14,
@@ -154,12 +162,34 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
                           ),
                         ),
                         const SizedBox(height: 16),
-                        _StaggeredGrid(
-                          items: _items,
-                          cardColor: _card,
-                          imageBg: _imageBg,
-                          accent: _accent,
-                          text: _text,
+                        productsAsync.when(
+                          data: (_) => filtered.isEmpty
+                              ? Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 48),
+                                  child: Center(
+                                    child: Text(
+                                      'No products in this category yet.\nLoad the sample catalogue from Home.',
+                                      textAlign: TextAlign.center,
+                                      style: GoogleFonts.plusJakartaSans(color: _muted, height: 1.5),
+                                    ),
+                                  ),
+                                )
+                              : _ProductGrid(
+                                  items: filtered,
+                                  cardBg: _imageBg,
+                                  titleColor: _text,
+                                ),
+                          loading: () => const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 40),
+                            child: Center(child: CircularProgressIndicator()),
+                          ),
+                          error: (e, _) => Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 40),
+                            child: Text(
+                              'Could not load products. $e',
+                              style: GoogleFonts.plusJakartaSans(color: _muted),
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -174,10 +204,9 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
               child: SafeArea(
                 top: false,
                 child: Center(
-                  child: _BottomNavBar(
+                  child: AtelierBottomNavBar.dock(
                     activeIndex: _activeBottomIndex,
                     onTap: (idx) => _navigateBottom(context, idx),
-                    accent: const Color(0xFFE9C349),
                   ),
                 ),
               ),
@@ -190,24 +219,7 @@ class _ProductListingScreenState extends State<ProductListingScreen> {
 
   void _navigateBottom(BuildContext context, int idx) {
     if (idx == _activeBottomIndex) return;
-    Widget target;
-    switch (idx) {
-      case 0:
-        target = const HomeScreen();
-        break;
-      case 1:
-        target = const ProductListingScreen();
-        break;
-      case 2:
-        target = const WishlistScreen();
-        break;
-      case 3:
-        target = const ProfileScreen();
-        break;
-      default:
-        target = const HomeScreen();
-    }
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => target));
+    AtelierBottomNav.go(context, idx);
   }
 }
 
@@ -226,14 +238,14 @@ class _TopBar extends StatelessWidget {
         children: [
           IconButton(
             onPressed: onBack,
-            icon: SvgPicture.asset(
-              'assets/images/icon_pl_back.svg',
-              width: 16,
-              height: 16,
-              colorFilter: const ColorFilter.mode(Color(0xFFF5F0E8), BlendMode.srcIn),
+            tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              size: 22,
+              color: Color(0xFFB8963E),
             ),
             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(width: 32, height: 32),
+            constraints: const BoxConstraints.tightFor(width: 44, height: 44),
           ),
           const Spacer(),
           Text(
@@ -263,318 +275,39 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-class _StaggeredGrid extends StatelessWidget {
-  const _StaggeredGrid({
+class _ProductGrid extends StatelessWidget {
+  const _ProductGrid({
     required this.items,
-    required this.cardColor,
-    required this.imageBg,
-    required this.accent,
-    required this.text,
+    required this.cardBg,
+    required this.titleColor,
   });
 
-  final List<_ListingItem> items;
-  final Color cardColor;
-  final Color imageBg;
-  final Color accent;
-  final Color text;
+  final List<Product> items;
+  final Color cardBg;
+  final Color titleColor;
 
   @override
   Widget build(BuildContext context) {
-    // Mimic Figma’s stagger: right column offset on rows 1 & 2.
     return LayoutBuilder(
       builder: (context, constraints) {
-        final gap = 16.0;
-        final w = (constraints.maxWidth - gap) / 2;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            SizedBox(width: w, child: _ListingCard(item: items[0], tall: true, offsetTop: 0, cardColor: cardColor, imageBg: imageBg, accent: accent, text: text)),
-            SizedBox(width: w, child: _ListingCard(item: items[1], tall: true, offsetTop: 32, cardColor: cardColor, imageBg: imageBg, accent: accent, text: text)),
-            SizedBox(width: w, child: _ListingCard(item: items[2], tall: true, offsetTop: 0, cardColor: cardColor, imageBg: imageBg, accent: accent, text: text)),
-            SizedBox(width: w, child: _ListingCard(item: items[3], tall: true, offsetTop: 32, cardColor: cardColor, imageBg: imageBg, accent: accent, text: text)),
-            SizedBox(width: w, child: _PartialImageCard(cardColor: cardColor, imageBg: imageBg, imageAssetPath: items[4].imageAssetPath)),
-          ],
+        final cols = constraints.maxWidth >= 700 ? 3 : 2;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: items.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: cols,
+            mainAxisSpacing: 20,
+            crossAxisSpacing: 16,
+            childAspectRatio: 0.58,
+          ),
+          itemBuilder: (_, i) => HomeProductCard(
+            product: items[i],
+            titleColor: titleColor,
+            cardBg: cardBg,
+          ),
         );
       },
     );
   }
 }
-
-class _ListingCard extends StatelessWidget {
-  const _ListingCard({
-    required this.item,
-    required this.tall,
-    required this.offsetTop,
-    required this.cardColor,
-    required this.imageBg,
-    required this.accent,
-    required this.text,
-  });
-
-  final _ListingItem item;
-  final bool tall;
-  final double offsetTop;
-  final Color cardColor;
-  final Color imageBg;
-  final Color accent;
-  final Color text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(top: offsetTop),
-      child: GestureDetector(
-        onTap: () {
-          Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProductDetailScreen()));
-        },
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            color: cardColor,
-            child: Stack(
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      color: imageBg,
-                      height: 228,
-                      width: double.infinity,
-                      child: Opacity(
-                        opacity: 0.9,
-                        child: Image.asset(
-                          item.imageAssetPath,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            item.brand,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 12,
-                              height: 16 / 12,
-                              letterSpacing: 1.2,
-                              color: const Color(0xFFE0C29A),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            item.title,
-                            style: GoogleFonts.notoSerif(
-                              fontSize: 18,
-                              height: 22.5 / 18,
-                              color: text,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            item.price,
-                            style: GoogleFonts.plusJakartaSans(
-                              fontSize: 14,
-                              height: 20 / 14,
-                              color: accent,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: List.generate(
-                              item.dots,
-                              (i) => Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: i == 0 ? const Color(0xFFE0C29A) : const Color.fromRGBO(224, 194, 154, 0.3),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                Positioned(
-                  right: 16,
-                  top: 16,
-                  child: SvgPicture.asset(
-                    'assets/images/icon_heart_outline.svg',
-                    width: 20,
-                    height: 18.35,
-                    colorFilter: const ColorFilter.mode(Color(0xFFF5F0E8), BlendMode.srcIn),
-                  ),
-                ),
-                if (item.isNew)
-                  Positioned(
-                    left: 16,
-                    top: 16,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: accent,
-                        borderRadius: BorderRadius.circular(9999),
-                      ),
-                      child: Text(
-                        'NEW',
-                        style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10,
-                          height: 15 / 10,
-                          letterSpacing: 1,
-                          color: const Color(0xFF403000),
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PartialImageCard extends StatelessWidget {
-  const _PartialImageCard({required this.cardColor, required this.imageBg, required this.imageAssetPath});
-
-  final Color cardColor;
-  final Color imageBg;
-  final String imageAssetPath;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 16),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          color: cardColor,
-          height: 244,
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: Container(
-                  color: imageBg,
-                  child: Opacity(
-                    opacity: 0.9,
-                    child: Image.asset(
-                      imageAssetPath,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-              ),
-              Positioned(
-                right: 16,
-                top: 16,
-                child: SvgPicture.asset(
-                  'assets/images/icon_heart_outline.svg',
-                  width: 20,
-                  height: 18.35,
-                  colorFilter: const ColorFilter.mode(Color(0xFFF5F0E8), BlendMode.srcIn),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomNavBar extends StatelessWidget {
-  const _BottomNavBar({
-    required this.activeIndex,
-    required this.onTap,
-    required this.accent,
-  });
-
-  final int activeIndex;
-  final ValueChanged<int> onTap;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 390,
-      margin: const EdgeInsets.only(bottom: 0.2),
-      decoration: BoxDecoration(
-        borderRadius: const BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFB8963E).withValues(alpha: 0.06),
-            blurRadius: 40,
-            offset: const Offset(0, -10),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 19, vertical: 14),
-            color: const Color.fromRGBO(42, 36, 32, 0.99),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _NavButton(active: activeIndex == 0, icon: Icons.home_rounded, onTap: () => onTap(0), accent: accent),
-                _NavButton(active: activeIndex == 1, icon: Icons.grid_view_rounded, onTap: () => onTap(1), accent: accent),
-                _NavButton(active: activeIndex == 2, icon: Icons.favorite_border_rounded, onTap: () => onTap(2), accent: accent),
-                _NavButton(active: activeIndex == 3, icon: Icons.person_outline_rounded, onTap: () => onTap(3), accent: accent),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NavButton extends StatelessWidget {
-  const _NavButton({required this.active, required this.icon, required this.onTap, required this.accent});
-
-  final bool active;
-  final IconData icon;
-  final VoidCallback onTap;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 48,
-        width: 48,
-        decoration: BoxDecoration(
-          color: active ? const Color.fromRGBO(195, 158, 61, 0.44) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        alignment: Alignment.center,
-        child: Icon(icon, color: active ? accent : const Color(0xFFD1C5B4), size: 22),
-      ),
-    );
-  }
-}
-
-class _ListingItem {
-  const _ListingItem(this.brand, this.title, this.price, this.isNew, this.dots, this.imageAssetPath);
-
-  final String brand;
-  final String title;
-  final String price;
-  final bool isNew;
-  final int dots;
-  final String imageAssetPath;
-}
-

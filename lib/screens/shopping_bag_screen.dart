@@ -3,17 +3,32 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'checkout_delivery_screen.dart';
 import 'gift_note_sheet.dart';
 import 'notifications_screen.dart';
 import 'search_discovery_screen.dart';
+import '../state/providers.dart';
+import '../data/models/cart_item.dart';
+import '../utils/format.dart';
+import '../utils/order_pricing.dart';
+import '../widgets/atelier_bottom_nav.dart';
+import '../widgets/product_network_image.dart';
+import 'login_screen.dart';
 
-class ShoppingBagScreen extends StatelessWidget {
+class ShoppingBagScreen extends ConsumerWidget {
   const ShoppingBagScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final itemsAsync = ref.watch(cartItemsProvider);
+    final canCheckout = itemsAsync.maybeWhen(
+      data: (items) => user != null && items.isNotEmpty,
+      orElse: () => false,
+    );
+
     return Scaffold(
       backgroundColor: const Color(0xFF131313),
       body: SafeArea(
@@ -27,32 +42,64 @@ class ShoppingBagScreen extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const _BagItem(
-                      image: 'assets/images/bag_item_shirt.png',
-                      brand: 'Maison Margiela',
-                      name: 'Oversized Silk Organza Shirt',
-                      price: '\$890',
-                      meta1: 'Color: Ivory',
-                      meta2: 'Size: M',
-                    ),
-                    const SizedBox(height: 48),
-                    const _BagItem(
-                      image: 'assets/images/bag_item_necklace.png',
-                      brand: 'Sophie Bille Brahe',
-                      name: 'Petite Croissant de Lune Necklace',
-                      price: '\$1,250',
-                      meta1: '18K Yellow Gold',
-                    ),
-                    const SizedBox(height: 48),
-                    const _BagItem(
-                      image: 'assets/images/bag_item_pumps.png',
-                      brand: 'Saint Laurent',
-                      name: 'Opyum Leather Pumps',
-                      price: '\$1,100',
-                      meta1: 'Color: Black',
-                      meta2: 'Size: 38 IT',
-                    ),
-                    const SizedBox(height: 48),
+                    if (user == null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 32),
+                        child: Text(
+                          'Please sign in to view your bag.',
+                          style: GoogleFonts.manrope(color: const Color(0xFFD1C5B4)),
+                        ),
+                      )
+                    else
+                      itemsAsync.when(
+                        data: (items) {
+                          if (items.isEmpty) {
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 32),
+                              child: Text(
+                                'Your bag is empty.',
+                                style: GoogleFonts.manrope(color: const Color(0xFFD1C5B4)),
+                              ),
+                            );
+                          }
+                          return Column(
+                            children: [
+                              for (int i = 0; i < items.length; i++) ...[
+                                _BagItem(
+                                  item: items[i],
+                                  onQtyChanged: (qty) {
+                                    final c = ref.read(cartRepositoryProvider);
+                                    if (c == null) return;
+                                    c.setQty(
+                                        uid: user.uid,
+                                        productId: items[i].productId,
+                                        qty: qty,
+                                      );
+                                  },
+                                  onRemove: () {
+                                    final c = ref.read(cartRepositoryProvider);
+                                    if (c == null) return;
+                                    c.remove(
+                                        uid: user.uid,
+                                        productId: items[i].productId,
+                                      );
+                                  },
+                                ),
+                                if (i != items.length - 1) const SizedBox(height: 48),
+                              ],
+                              const SizedBox(height: 48),
+                            ],
+                          );
+                        },
+                        loading: () => const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 32),
+                          child: Center(child: CircularProgressIndicator()),
+                        ),
+                        error: (e, _) => Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 32),
+                          child: Text('Could not load bag.', style: GoogleFonts.manrope(color: const Color(0xFFD1C5B4))),
+                        ),
+                      ),
                     const _PromoCode(),
                     const SizedBox(height: 48),
                     GestureDetector(
@@ -70,14 +117,41 @@ class ShoppingBagScreen extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    const _Summary(),
+                    if (user != null)
+                      itemsAsync.when(
+                        data: (items) => _Summary(items: items),
+                        loading: () => const SizedBox.shrink(),
+                        error: (e, _) => const SizedBox.shrink(),
+                      ),
                     const SizedBox(height: 24),
                   ],
                 ),
               ),
             ),
+            SafeArea(
+              top: false,
+              child: AtelierBottomNavBar.dock(
+                activeIndex: -1,
+                onTap: (i) => AtelierBottomNav.go(context, i),
+              ),
+            ),
             _CheckoutFooter(
+              enabled: canCheckout,
               onCheckout: () {
+                if (user == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please sign in to checkout.')),
+                  );
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginScreen()));
+                  return;
+                }
+                final items = itemsAsync.value ?? const <CartItem>[];
+                if (items.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Your bag is empty.')),
+                  );
+                  return;
+                }
                 Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CheckoutDeliveryScreen()));
               },
             ),
@@ -153,20 +227,14 @@ class _TopAppBar extends StatelessWidget {
 
 class _BagItem extends StatelessWidget {
   const _BagItem({
-    required this.image,
-    required this.brand,
-    required this.name,
-    required this.price,
-    required this.meta1,
-    this.meta2,
+    required this.item,
+    required this.onQtyChanged,
+    required this.onRemove,
   });
 
-  final String image;
-  final String brand;
-  final String name;
-  final String price;
-  final String meta1;
-  final String? meta2;
+  final CartItem item;
+  final ValueChanged<int> onQtyChanged;
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -179,7 +247,18 @@ class _BagItem extends StatelessWidget {
             width: 96,
             height: 128,
             color: const Color(0xFF1C1B1B),
-            child: Opacity(opacity: 0.8, child: Image.asset(image, fit: BoxFit.cover)),
+            child: item.imageUrlSnapshot.isEmpty
+                ? const SizedBox.shrink()
+                : Opacity(
+                    opacity: 0.85,
+                    child: ProductNetworkImage(
+                      imageUrl: item.imageUrlSnapshot,
+                      width: 96,
+                      height: 128,
+                      fit: BoxFit.cover,
+                      fallbackAsset: 'assets/images/search_edit_quiet.png',
+                    ),
+                  ),
           ),
         ),
         const SizedBox(width: 24),
@@ -193,12 +272,12 @@ class _BagItem extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      brand,
+                      item.brandSnapshot,
                       style: GoogleFonts.notoSerif(fontSize: 18, height: 22.5 / 18, color: const Color(0xFFE5E2E1)),
                     ),
                   ),
                   Text(
-                    price,
+                    '${item.currency} ${item.unitPrice}',
                     style: GoogleFonts.manrope(
                       fontSize: 16,
                       height: 24 / 16,
@@ -210,22 +289,24 @@ class _BagItem extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 4),
-              Text(name, style: GoogleFonts.manrope(fontSize: 14, height: 20 / 14, color: const Color(0xFFD1C5B4))),
+              Text(item.nameSnapshot, style: GoogleFonts.manrope(fontSize: 14, height: 20 / 14, color: const Color(0xFFD1C5B4))),
               const SizedBox(height: 8),
-              Text(meta1, style: GoogleFonts.manrope(fontSize: 12, height: 16 / 12, color: const Color(0xFF9A8F80))),
-              if (meta2 != null)
-                Text(meta2!, style: GoogleFonts.manrope(fontSize: 12, height: 16 / 12, color: const Color(0xFF9A8F80))),
+              if (item.variant.isNotEmpty)
+                Text(
+                  item.variant.entries.map((e) => '${e.key}: ${e.value}').join(' • '),
+                  style: GoogleFonts.manrope(fontSize: 12, height: 16 / 12, color: const Color(0xFF9A8F80)),
+                ),
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.only(top: 12),
                 decoration: const BoxDecoration(
                   border: Border(top: BorderSide(color: Color.fromRGBO(78, 70, 57, 0.2), width: 1)),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    _QtyStepper(),
-                    _RemoveButton(),
+                    _QtyStepper(qty: item.qty, onChanged: onQtyChanged),
+                    _RemoveButton(onRemove: onRemove),
                   ],
                 ),
               ),
@@ -238,7 +319,10 @@ class _BagItem extends StatelessWidget {
 }
 
 class _QtyStepper extends StatelessWidget {
-  const _QtyStepper();
+  const _QtyStepper({required this.qty, required this.onChanged});
+
+  final int qty;
+  final ValueChanged<int> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -247,11 +331,17 @@ class _QtyStepper extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: Row(
         children: [
-          SvgPicture.asset('assets/images/icon_qty_minus.svg', width: 7.58, height: 0.88),
+          GestureDetector(
+            onTap: () => onChanged(qty - 1),
+            child: SvgPicture.asset('assets/images/icon_qty_minus.svg', width: 7.58, height: 0.88),
+          ),
           const SizedBox(width: 16),
-          Text('1', style: GoogleFonts.manrope(fontSize: 14, height: 20 / 14, color: const Color(0xFFE5E2E1))),
+          Text('$qty', style: GoogleFonts.manrope(fontSize: 14, height: 20 / 14, color: const Color(0xFFE5E2E1))),
           const SizedBox(width: 16),
-          SvgPicture.asset('assets/images/icon_qty_plus.svg', width: 7.58, height: 7.58),
+          GestureDetector(
+            onTap: () => onChanged(qty + 1),
+            child: SvgPicture.asset('assets/images/icon_qty_plus.svg', width: 7.58, height: 7.58),
+          ),
         ],
       ),
     );
@@ -259,19 +349,24 @@ class _QtyStepper extends StatelessWidget {
 }
 
 class _RemoveButton extends StatelessWidget {
-  const _RemoveButton();
+  const _RemoveButton({required this.onRemove});
+
+  final VoidCallback onRemove;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        SvgPicture.asset('assets/images/icon_remove.svg', width: 8.87, height: 8.87),
-        const SizedBox(width: 4),
-        Text(
-          'REMOVE',
-          style: GoogleFonts.manrope(fontSize: 12, height: 16 / 12, letterSpacing: 1.2, color: const Color(0xFFD1C5B4)),
-        ),
-      ],
+    return GestureDetector(
+      onTap: onRemove,
+      child: Row(
+        children: [
+          SvgPicture.asset('assets/images/icon_remove.svg', width: 8.87, height: 8.87),
+          const SizedBox(width: 4),
+          Text(
+            'REMOVE',
+            style: GoogleFonts.manrope(fontSize: 12, height: 16 / 12, letterSpacing: 1.2, color: const Color(0xFFD1C5B4)),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -314,7 +409,9 @@ class _PromoCode extends StatelessWidget {
 }
 
 class _Summary extends StatelessWidget {
-  const _Summary();
+  const _Summary({required this.items});
+
+  final List<CartItem> items;
 
   Widget _row(String left, String right, {Color? rightColor, double? rightSize}) {
     return Row(
@@ -335,13 +432,14 @@ class _Summary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final totals = computeOrderTotals(items);
     return Column(
       children: [
-        _row('Subtotal', '\$3,240.00'),
+        _row('Subtotal', formatMoney(totals.subtotal, currency: totals.currency)),
         const SizedBox(height: 16),
-        _row('Estimated Shipping', 'Complimentary', rightColor: const Color(0xFFE5E2E1)),
+        _row('Standard Shipping', formatMoney(totals.shipping, currency: totals.currency)),
         const SizedBox(height: 16),
-        _row('Taxes', 'Calculated at checkout', rightColor: const Color(0xFF9A8F80), rightSize: 12),
+        _row('Estimated Taxes', formatMoney(totals.tax, currency: totals.currency)),
         const SizedBox(height: 33),
         Container(height: 1, color: const Color.fromRGBO(78, 70, 57, 0.2)),
         const SizedBox(height: 16),
@@ -350,7 +448,7 @@ class _Summary extends StatelessWidget {
           children: [
             Text('TOTAL', style: GoogleFonts.manrope(fontSize: 14, height: 20 / 14, letterSpacing: 1.4, color: const Color(0xFFE5E2E1))),
             Text(
-              '\$3,240.00',
+              formatMoney(totals.total, currency: totals.currency),
               style: GoogleFonts.notoSerif(fontSize: 30, height: 36 / 30, color: const Color(0xFFE9C349)),
             ),
           ],
@@ -361,8 +459,9 @@ class _Summary extends StatelessWidget {
 }
 
 class _CheckoutFooter extends StatelessWidget {
-  const _CheckoutFooter({required this.onCheckout});
+  const _CheckoutFooter({required this.onCheckout, required this.enabled});
   final VoidCallback onCheckout;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
@@ -380,11 +479,15 @@ class _CheckoutFooter extends StatelessWidget {
               ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 448),
                 child: GestureDetector(
-                  onTap: onCheckout,
+                  onTap: enabled ? onCheckout : null,
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     decoration: BoxDecoration(
-                      gradient: const LinearGradient(colors: [Color(0xFFE9C349), Color(0xFFC5A12A)]),
+                      gradient: LinearGradient(
+                        colors: enabled
+                            ? const [Color(0xFFE9C349), Color(0xFFC5A12A)]
+                            : const [Color(0xFF4A4A4A), Color(0xFF3A3A3A)],
+                      ),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     alignment: Alignment.center,

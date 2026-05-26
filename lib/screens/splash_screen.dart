@@ -1,18 +1,49 @@
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'home_screen.dart';
 import 'login_screen.dart';
 import 'onboarding_discover_screen.dart';
 
-class SplashScreen extends StatelessWidget {
+class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
   static const _bg = Color(0xFF131313);
 
   @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _completeWebGoogleRedirect());
+  }
+
+  /// After [AuthRepository.signInWithGoogle] uses redirect on web, Firebase returns here;
+  /// [getRedirectResult] attaches the Google account to the session.
+  Future<void> _completeWebGoogleRedirect() async {
+    if (!kIsWeb || !mounted) return;
+    try {
+      final result = await FirebaseAuth.instance.getRedirectResult();
+      if (!mounted) return;
+      if (result.user != null) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
+        );
+      }
+    } catch (e, st) {
+      debugPrint('SplashScreen getRedirectResult: $e\n$st');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
+      backgroundColor: SplashScreen._bg,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -92,6 +123,25 @@ class SplashScreen extends StatelessWidget {
                             );
                           },
                         ),
+                        const SizedBox(height: 12),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(builder: (_) => const HomeScreen()),
+                            );
+                          },
+                          child: Text(
+                            'BROWSE AS GUEST',
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              letterSpacing: 1.4,
+                              fontWeight: FontWeight.w500,
+                              color: const Color(0xFF8A8278),
+                              decoration: TextDecoration.underline,
+                              decorationColor: Color.fromRGBO(138, 130, 120, 0.6),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -169,4 +219,3 @@ class _SecondaryButton extends StatelessWidget {
     );
   }
 }
-

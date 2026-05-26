@@ -1,21 +1,30 @@
 import 'dart:ui';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'forgot_password_screen.dart';
 import 'home_screen.dart';
 import 'register_screen.dart';
+import '../state/providers.dart';
+import '../utils/auth_messages.dart';
+import '../utils/google_sign_in_setup_dialog.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+class LoginScreen extends ConsumerStatefulWidget {
+  const LoginScreen({super.key, this.initialEmail});
+
+  /// When set (e.g. from Register), the email field is prefilled.
+  final String? initialEmail;
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   static const _bg = Color(0xFF080808);
   static const _textPrimary = Color(0xFFE5E2E1);
   static const _muted = Color(0xFFD0C5B2);
@@ -26,12 +35,77 @@ class _LoginScreenState extends State<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
   bool _obscure = true;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final init = widget.initialEmail;
+    if (init != null && init.trim().isNotEmpty) {
+      _email.text = init.trim();
+    }
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _completeWebGoogleRedirectIfNeeded());
+    }
+  }
+
+  /// If the user lands on Login after a web OAuth redirect, attach the session here too.
+  Future<void> _completeWebGoogleRedirectIfNeeded() async {
+    if (!kIsWeb || !mounted) return;
+    try {
+      final result = await FirebaseAuth.instance.getRedirectResult();
+      if (!mounted) return;
+      if (result.user != null) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(builder: (_) => const HomeScreen()),
+        );
+      }
+    } catch (e, st) {
+      debugPrint('LoginScreen getRedirectResult: $e\n$st');
+    }
+  }
+
+  bool _isFirebaseGoogleProviderDisabled(FirebaseAuthException e) {
+    if (e.code != 'operation-not-allowed') return false;
+    final m = (e.message ?? '').toLowerCase();
+    return m.contains('disabled') && m.contains('provider');
+  }
 
   @override
   void dispose() {
     _email.dispose();
     _password.dispose();
     super.dispose();
+  }
+
+  void _showAuthSnackBar(BuildContext context, Object e, {SnackBarAction? action}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+        backgroundColor: const Color(0xFF1A1A1A),
+        elevation: 8,
+        content: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.error_outline_rounded, color: Color(0xFFE8C265), size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                friendlyAuthError(e),
+                style: GoogleFonts.plusJakartaSans(
+                  color: const Color(0xFFF5F0E8),
+                  fontSize: 14,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
+        ),
+        duration: const Duration(seconds: 6),
+        action: action,
+      ),
+    );
   }
 
   @override
@@ -85,7 +159,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           _IconTextField(
                             controller: _email,
                             label: 'Email Address',
-                            leading: SvgPicture.asset('assets/images/icon_mail.svg', width: 16, height: 16),
+                            leading: Icon(Icons.mail_outline_rounded, size: 22, color: _accent),
                             background: _fieldBg,
                             bottomBorderColor: _fieldBorder,
                             labelColor: _muted.withValues(alpha: 0.5),
@@ -94,15 +168,25 @@ class _LoginScreenState extends State<LoginScreen> {
                           _IconTextField(
                             controller: _password,
                             label: 'Password',
-                            leading: SvgPicture.asset('assets/images/icon_lock.svg', width: 16, height: 16),
+                            leading: Icon(Icons.lock_outline_rounded, size: 22, color: _accent),
                             background: _fieldBg,
                             bottomBorderColor: _fieldBorder,
                             labelColor: _muted.withValues(alpha: 0.5),
                             obscureText: _obscure,
                             trailing: IconButton(
                               onPressed: () => setState(() => _obscure = !_obscure),
-                              icon: SvgPicture.asset('assets/images/icon_eye.svg', width: 18, height: 18),
-                              color: _muted.withValues(alpha: 0.75),
+                              tooltip: _obscure ? 'Show password' : 'Hide password',
+                              style: IconButton.styleFrom(
+                                foregroundColor: _accent,
+                                padding: const EdgeInsets.all(10),
+                                minimumSize: const Size(48, 48),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              icon: Icon(
+                                _obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                                size: 22,
+                                color: _accent,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -132,11 +216,74 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 16),
                           _PrimaryGradientButton(
                             text: 'SIGN IN',
-                            onPressed: () {
-                              Navigator.of(context).pushReplacement(
-                                MaterialPageRoute(builder: (_) => const HomeScreen()),
-                              );
-                            },
+                            onPressed: _loading
+                                ? null
+                                : () async {
+                                    final email = _email.text.trim();
+                                    final password = _password.text;
+                                    if (email.isEmpty || password.isEmpty) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(
+                                          behavior: SnackBarBehavior.floating,
+                                          margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                                          backgroundColor: const Color(0xFF1A1A1A),
+                                          content: Row(
+                                            children: [
+                                              const Icon(Icons.info_outline_rounded,
+                                                  color: Color(0xFFE8C265), size: 22),
+                                              const SizedBox(width: 12),
+                                              Expanded(
+                                                child: Text(
+                                                  'Please enter email and password.',
+                                                  style: GoogleFonts.plusJakartaSans(
+                                                    color: const Color(0xFFF5F0E8),
+                                                    fontSize: 14,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                      return;
+                                    }
+
+                                    final nav = Navigator.of(context);
+
+                                    setState(() => _loading = true);
+                                    try {
+                                      await ref.read(authRepositoryProvider).signInWithEmail(
+                                            email: email,
+                                            password: password,
+                                          );
+                                      if (!mounted) return;
+                                      nav.pushReplacement(
+                                        MaterialPageRoute(builder: (_) => const HomeScreen()),
+                                      );
+                                    } catch (e) {
+                                      if (!mounted || !context.mounted) return;
+                                      _showAuthSnackBar(
+                                        context,
+                                        e,
+                                        action: e is FirebaseAuthException &&
+                                                (e.code == 'invalid-credential' ||
+                                                    e.code == 'user-not-found' ||
+                                                    e.code == 'wrong-password')
+                                            ? SnackBarAction(
+                                                label: 'Sign up',
+                                                textColor: const Color(0xFFE8C265),
+                                                onPressed: () {
+                                                  Navigator.of(context).push(
+                                                    MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                                                  );
+                                                },
+                                              )
+                                            : null,
+                                      );
+                                    } finally {
+                                      if (mounted) setState(() => _loading = false);
+                                    }
+                                  },
                             from: const Color(0xFFB8963E),
                             to: const Color(0xFFC4A882),
                             textColor: const Color(0xFF3E2E00),
@@ -147,14 +294,66 @@ class _LoginScreenState extends State<LoginScreen> {
                           const SizedBox(height: 16),
                           _SocialButton(
                             label: 'Continue with Google',
-                            leading: SvgPicture.asset('assets/images/icon_google.svg', width: 16, height: 16),
-                            onPressed: () {},
+                            leading: SvgPicture.asset(
+                              'assets/images/icon_google.svg',
+                              width: 24,
+                              height: 24,
+                            ),
+                            onPressed: _loading
+                                ? null
+                                : () async {
+                                    final nav = Navigator.of(context);
+                                    setState(() => _loading = true);
+                                    try {
+                                      await ref.read(authRepositoryProvider).signInWithGoogle();
+                                      if (!mounted) return;
+                                      nav.pushReplacement(
+                                        MaterialPageRoute(builder: (_) => const HomeScreen()),
+                                      );
+                                    } on FirebaseAuthException catch (e) {
+                                      if (!mounted || !context.mounted) return;
+                                      // Full-page OAuth redirect has started; avoid error UI.
+                                      if (e.code == 'redirect-in-progress') return;
+                                      if (_isFirebaseGoogleProviderDisabled(e)) {
+                                        await showGoogleSignInSetupDialog(context);
+                                        return;
+                                      }
+                                      _showAuthSnackBar(context, e);
+                                    } catch (e) {
+                                      if (!mounted || !context.mounted) return;
+                                      _showAuthSnackBar(context, e);
+                                    } finally {
+                                      if (mounted) setState(() => _loading = false);
+                                    }
+                                  },
                           ),
                           const SizedBox(height: 16),
                           _SocialButton(
                             label: 'Continue with Apple',
-                            leading: SvgPicture.asset('assets/images/icon_apple.svg', width: 16, height: 16),
-                            onPressed: () {},
+                            leading: SvgPicture.asset(
+                              'assets/images/icon_apple.svg',
+                              width: 24,
+                              height: 24,
+                              colorFilter: const ColorFilter.mode(Color(0xFFF5F0E8), BlendMode.srcIn),
+                            ),
+                            onPressed: _loading
+                                ? null
+                                : () async {
+                                    final nav = Navigator.of(context);
+                                    setState(() => _loading = true);
+                                    try {
+                                      await ref.read(authRepositoryProvider).signInWithApple();
+                                      if (!mounted) return;
+                                      nav.pushReplacement(
+                                        MaterialPageRoute(builder: (_) => const HomeScreen()),
+                                      );
+                                    } catch (e) {
+                                      if (!mounted || !context.mounted) return;
+                                      _showAuthSnackBar(context, e);
+                                    } finally {
+                                      if (mounted) setState(() => _loading = false);
+                                    }
+                                  },
                           ),
                           const SizedBox(height: 24),
                           Row(
@@ -250,6 +449,32 @@ class _HeaderSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 40),
+        Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: accent.withValues(alpha: 0.65), width: 2),
+            color: const Color.fromRGBO(232, 194, 101, 0.14),
+            boxShadow: [
+              BoxShadow(
+                color: accent.withValues(alpha: 0.22),
+                blurRadius: 28,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          alignment: Alignment.center,
+          child: Icon(
+            Icons.lock_person_rounded,
+            size: 38,
+            color: accent,
+            shadows: const [
+              Shadow(color: Color.fromRGBO(0, 0, 0, 0.45), blurRadius: 12, offset: Offset(0, 2)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 28),
         Text(
           'Welcome Back',
           textAlign: TextAlign.center,
@@ -312,8 +537,8 @@ class _IconTextField extends StatelessWidget {
       padding: EdgeInsets.fromLTRB(20, 16, trailing == null ? 20 : 8, 16),
       child: Row(
         children: [
-          Opacity(opacity: 0.75, child: leading),
-          const SizedBox(width: 16),
+          leading,
+          const SizedBox(width: 14),
           Expanded(
             child: TextField(
               controller: controller,
@@ -345,7 +570,7 @@ class _PrimaryGradientButton extends StatelessWidget {
   });
 
   final String text;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
   final Color from;
   final Color to;
   final Color textColor;
@@ -364,13 +589,16 @@ class _PrimaryGradientButton extends StatelessWidget {
           boxShadow: [BoxShadow(color: shadowColor, blurRadius: 20, offset: const Offset(0, 4))],
         ),
         alignment: Alignment.center,
-        child: Text(
-          text,
-          style: GoogleFonts.plusJakartaSans(
-            fontSize: 14,
-            height: 20 / 14,
-            letterSpacing: 2.1,
-            color: textColor,
+        child: Opacity(
+          opacity: onPressed == null ? 0.7 : 1,
+          child: Text(
+            text,
+            style: GoogleFonts.plusJakartaSans(
+              fontSize: 14,
+              height: 20 / 14,
+              letterSpacing: 2.1,
+              color: textColor,
+            ),
           ),
         ),
       ),
@@ -438,35 +666,39 @@ class _SocialButton extends StatelessWidget {
 
   final String label;
   final Widget leading;
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        height: 50,
-        width: double.infinity,
-        decoration: BoxDecoration(
-          color: const Color.fromRGBO(19, 19, 19, 0.5),
-          borderRadius: BorderRadius.circular(9999),
-          border: Border.all(color: const Color.fromRGBO(77, 70, 55, 0.3), width: 1),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            leading,
-            const SizedBox(width: 12),
-            Text(
-              label,
-              style: GoogleFonts.plusJakartaSans(
-                fontSize: 14,
-                height: 20 / 14,
-                color: const Color(0xFFE5E2E1),
+    final enabled = onPressed != null;
+    return Opacity(
+      opacity: enabled ? 1 : 0.45,
+      child: GestureDetector(
+        onTap: onPressed,
+        child: Container(
+          height: 50,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: const Color.fromRGBO(19, 19, 19, 0.5),
+            borderRadius: BorderRadius.circular(9999),
+            border: Border.all(color: const Color.fromRGBO(77, 70, 55, 0.3), width: 1),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              leading,
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 14,
+                  height: 20 / 14,
+                  color: const Color(0xFFE5E2E1),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

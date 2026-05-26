@@ -1,28 +1,31 @@
 import 'dart:ui';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'home_screen.dart';
-import 'product_listing_screen.dart';
-import 'wishlist_screen.dart';
+import '../data/models/user_profile.dart';
+import '../state/providers.dart';
+import '../widgets/atelier_bottom_nav.dart';
+import '../widgets/profile_circle_avatar.dart';
 import 'edit_profile_screen.dart';
 import 'saved_addresses_screen.dart';
 import 'payment_methods_screen.dart';
 import 'order_history_screen.dart';
+import 'login_screen.dart';
 import 'sign_out_sheet.dart';
-import 'track_order_screen.dart';
 import 'preferences_screen.dart';
 import 'privacy_security_screen.dart';
 
-class ProfileScreen extends StatefulWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   static const _bg = Color(0xFF080808);
   static const _surface = Color(0xFF2A2420);
   static const _accent = Color(0xFFE8C265);
@@ -33,6 +36,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final user = ref.watch(currentUserProvider);
+    final profileAsync = ref.watch(userProfileProvider);
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
@@ -45,16 +50,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   _FallbackHeader(),
                   const SizedBox(height: 24),
-                  _ProfileHeader(accent: _accent),
+                  if (user == null)
+                    _GuestProfilePrompt(accent: _accent, muted: _muted)
+                  else
+                    profileAsync.when(
+                      data: (p) => _ProfileHeader(
+                        accent: _accent,
+                        fullName: p.fullName.isEmpty ? 'Member' : p.fullName,
+                        memberSince: p.createdAt == null ? '' : 'Member since ${p.createdAt!.toDate().year}',
+                        photoUrl: _effectiveAvatarUrl(p, user),
+                      ),
+                      loading: () => _ProfileHeader(
+                        accent: _accent,
+                        fullName: 'Loading...',
+                        memberSince: '',
+                        photoUrl: user.photoURL?.trim(),
+                      ),
+                      error: (e, _) => _ProfileHeader(
+                        accent: _accent,
+                        fullName: 'Member',
+                        memberSince: '',
+                        photoUrl: user.photoURL?.trim(),
+                      ),
+                    ),
                   const SizedBox(height: 24),
                   _StatsRow(surface: _surface, accent: _accent, muted: _muted),
                   const SizedBox(height: 24),
                   _MenuSections(surface: _surface, accent: _accent),
                   const SizedBox(height: 32),
-                  GestureDetector(
-                    onTap: () {
-                    showSignOutSheet(context);
-                    },
+                  if (user != null)
+                    GestureDetector(
+                    onTap: () => showSignOutSheet(context, ref),
                     child: Container(
                       padding: const EdgeInsets.only(bottom: 5),
                       decoration: const BoxDecoration(
@@ -110,10 +136,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: SafeArea(
                 top: false,
                 child: Center(
-                  child: _BottomNavBar(
+                  child: AtelierBottomNavBar.dock(
                     activeIndex: _activeBottomIndex,
                     onTap: (idx) => _navigateBottom(context, idx),
-                    accent: const Color(0xFFE9C349),
                   ),
                 ),
               ),
@@ -126,24 +151,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   void _navigateBottom(BuildContext context, int idx) {
     if (idx == _activeBottomIndex) return;
-    Widget target;
-    switch (idx) {
-      case 0:
-        target = const HomeScreen();
-        break;
-      case 1:
-        target = const ProductListingScreen();
-        break;
-      case 2:
-        target = const WishlistScreen();
-        break;
-      case 3:
-        target = const ProfileScreen();
-        break;
-      default:
-        target = const HomeScreen();
-    }
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => target));
+    AtelierBottomNav.go(context, idx);
+  }
+
+  String? _effectiveAvatarUrl(UserProfile p, User user) {
+    final fromFs = p.photoUrl?.trim();
+    if (fromFs != null && fromFs.isNotEmpty) return fromFs;
+    final fromAuth = user.photoURL?.trim();
+    if (fromAuth != null && fromAuth.isNotEmpty) return fromAuth;
+    return null;
   }
 }
 
@@ -156,9 +172,17 @@ class _FallbackHeader extends StatelessWidget {
 }
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader({required this.accent});
+  const _ProfileHeader({
+    required this.accent,
+    required this.fullName,
+    required this.memberSince,
+    this.photoUrl,
+  });
 
   final Color accent;
+  final String fullName;
+  final String memberSince;
+  final String? photoUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -175,13 +199,7 @@ class _ProfileHeader extends StatelessWidget {
                 border: Border.all(color: accent, width: 1),
                 borderRadius: BorderRadius.circular(9999),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(9999),
-                child: Image.asset(
-                  'assets/images/profile_sofia_reyes.png',
-                  fit: BoxFit.cover,
-                ),
-              ),
+              child: ProfileCircleAvatar(url: photoUrl, size: 70),
             ),
             Positioned(
               right: -8,
@@ -218,7 +236,7 @@ class _ProfileHeader extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         Text(
-          'Sofia Reyes',
+          fullName,
           textAlign: TextAlign.center,
           style: GoogleFonts.bodoniModa(
             fontSize: 30,
@@ -228,7 +246,7 @@ class _ProfileHeader extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Member since 2021',
+          memberSince.isEmpty ? 'Member' : memberSince,
           textAlign: TextAlign.center,
           style: GoogleFonts.poppins(
             fontSize: 14,
@@ -242,15 +260,18 @@ class _ProfileHeader extends StatelessWidget {
   }
 }
 
-class _StatsRow extends StatelessWidget {
+class _StatsRow extends ConsumerWidget {
   const _StatsRow({required this.surface, required this.accent, required this.muted});
-
   final Color surface;
   final Color accent;
   final Color muted;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final orders = ref.watch(userOrdersProvider).value?.length ?? 0;
+    final saved = ref.watch(wishlistItemsProvider).value?.length ?? 0;
+    final user = ref.watch(currentUserProvider);
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
@@ -258,12 +279,12 @@ class _StatsRow extends StatelessWidget {
         boxShadow: const [BoxShadow(color: Color.fromRGBO(0, 0, 0, 0.4), blurRadius: 40, offset: Offset(0, 20))],
       ),
       child: Row(
-        children: const [
-          Expanded(child: _Stat(value: '12', label: 'ORDERS')),
-          _Divider(),
-          Expanded(child: _Stat(value: '48', label: 'SAVED')),
-          _Divider(),
-          Expanded(child: _Stat(value: '5', label: 'REVIEWS')),
+        children: [
+          Expanded(child: _Stat(value: user == null ? '—' : '$orders', label: 'ORDERS')),
+          const _Divider(),
+          Expanded(child: _Stat(value: user == null ? '—' : '$saved', label: 'SAVED')),
+          const _Divider(),
+          const Expanded(child: _Stat(value: '—', label: 'REVIEWS')),
         ],
       ),
     );
@@ -438,7 +459,7 @@ class _RowButton extends StatelessWidget {
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OrderHistoryScreen()));
             return;
           case 'Track Order':
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TrackOrderScreen()));
+            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OrderHistoryScreen()));
             return;
           case 'Preferences':
             Navigator.of(context).push(MaterialPageRoute(builder: (_) => const PreferencesScreen()));
@@ -483,79 +504,28 @@ class _MenuItem {
   final String label;
 }
 
-class _BottomNavBar extends StatelessWidget {
-  const _BottomNavBar({
-    required this.activeIndex,
-    required this.onTap,
-    required this.accent,
-  });
+class _GuestProfilePrompt extends StatelessWidget {
+  const _GuestProfilePrompt({required this.accent, required this.muted});
 
-  final int activeIndex;
-  final ValueChanged<int> onTap;
   final Color accent;
+  final Color muted;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 390,
-      margin: const EdgeInsets.only(bottom: 0.2),
-      decoration: BoxDecoration(
-        borderRadius: const BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFB8963E).withValues(alpha: 0.06),
-            blurRadius: 40,
-            offset: const Offset(0, -10),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: const BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 19, vertical: 14),
-            color: const Color.fromRGBO(42, 36, 32, 0.99),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _NavButton(active: activeIndex == 0, icon: Icons.home_rounded, onTap: () => onTap(0), accent: accent),
-                _NavButton(active: activeIndex == 1, icon: Icons.grid_view_rounded, onTap: () => onTap(1), accent: accent),
-                _NavButton(active: activeIndex == 2, icon: Icons.favorite_border_rounded, onTap: () => onTap(2), accent: accent),
-                _NavButton(active: activeIndex == 3, icon: Icons.person_outline_rounded, onTap: () => onTap(3), accent: accent),
-              ],
-            ),
-          ),
+    return Column(
+      children: [
+        Text(
+          'Sign in to view your profile',
+          style: GoogleFonts.manrope(fontSize: 14, color: muted),
         ),
-      ),
+        const SizedBox(height: 16),
+        TextButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          ),
+          child: Text('SIGN IN', style: GoogleFonts.manrope(color: accent, letterSpacing: 1.2)),
+        ),
+      ],
     );
   }
 }
-
-class _NavButton extends StatelessWidget {
-  const _NavButton({required this.active, required this.icon, required this.onTap, required this.accent});
-
-  final bool active;
-  final IconData icon;
-  final VoidCallback onTap;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 48,
-        width: 48,
-        decoration: BoxDecoration(
-          color: active ? const Color.fromRGBO(195, 158, 61, 0.44) : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        alignment: Alignment.center,
-        child: Icon(icon, color: active ? accent : const Color(0xFFD1C5B4), size: 22),
-      ),
-    );
-  }
-}
-

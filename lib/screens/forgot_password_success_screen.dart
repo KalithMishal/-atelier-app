@@ -4,7 +4,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'login_screen.dart';
 
 class ForgotPasswordSuccessScreen extends StatelessWidget {
-  const ForgotPasswordSuccessScreen({super.key});
+  const ForgotPasswordSuccessScreen({super.key, required this.email});
+
+  /// Email the user asked to reset (for confirmation copy only).
+  final String email;
 
   @override
   Widget build(BuildContext context) {
@@ -24,9 +27,18 @@ class ForgotPasswordSuccessScreen extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               Text(
-                'Check your email for a secure reset link.',
+                email,
                 textAlign: TextAlign.center,
-                style: GoogleFonts.manrope(fontSize: 14, height: 20 / 14, color: const Color(0xFF9A8F80)),
+                style: GoogleFonts.manrope(fontSize: 14, height: 20 / 14, fontWeight: FontWeight.w600, color: const Color(0xFFE9C349)),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'If an account exists for this address, Firebase has sent a reset message.\n\n'
+                '• Check your spam / junk folder.\n'
+                '• Use the exact email you registered with (including Google sign-in if you never set a password).\n'
+                '• If nothing arrives after several minutes, you may need to register first, or sign in with Google.',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.manrope(fontSize: 14, height: 22 / 14, color: const Color(0xFF9A8F80)),
               ),
               const SizedBox(height: 32),
               SizedBox(
@@ -54,4 +66,3 @@ class ForgotPasswordSuccessScreen extends StatelessWidget {
     );
   }
 }
-

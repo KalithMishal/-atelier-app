@@ -1,0 +1,16 @@
+{
+  "note": "Free public image URLs — no Firebase Storage required. Or tap LOAD SAMPLE CATALOGUE on Home while signed in.",
+  "products": [
+    {
+      "id": "sample-trousers",
+      "name": "Tailored Wool Trousers",
+      "brand": "ATELIER",
+      "categoryId": "men",
+      "price": 680,
+      "currency": "USD",
+      "imageUrls": ["https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=800&q=80"],
+      "description": "High-rise wool trouser with pressed crease.",
+      "isFeatured": false
+    }
+  ]
+}

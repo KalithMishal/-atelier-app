@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'login_screen.dart';
+import '../state/providers.dart';
 
-Future<void> showSignOutSheet(BuildContext context) {
+Future<void> showSignOutSheet(BuildContext context, WidgetRef ref) {
   return showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
@@ -36,8 +38,11 @@ Future<void> showSignOutSheet(BuildContext context) {
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
-                onPressed: () {
+                onPressed: () async {
                   Navigator.of(ctx).pop();
+                  await ref.read(authRepositoryProvider).signOut();
+                  ref.read(checkoutDraftProvider.notifier).clear();
+                  if (!context.mounted) return;
                   Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute(builder: (_) => const LoginScreen()),
                     (route) => false,
@@ -66,4 +71,3 @@ Future<void> showSignOutSheet(BuildContext context) {
     },
   );
 }
-

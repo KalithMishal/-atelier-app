@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-class SavedAddressesScreen extends StatelessWidget {
+import '../data/models/saved_address.dart';
+import '../state/providers.dart';
+
+class SavedAddressesScreen extends ConsumerWidget {
   const SavedAddressesScreen({super.key});
 
   static const _bg = Color(0xFF080808);
@@ -10,249 +14,205 @@ class SavedAddressesScreen extends StatelessWidget {
   static const _luxGold = Color(0xFFB8963E);
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final addressesAsync = ref.watch(savedAddressesProvider);
+
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
-        bottom: false,
-        child: Stack(
+        child: Column(
           children: [
-            SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 96, 24, 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 8, 16, 0),
+              child: Row(
                 children: [
-                  Text(
-                    'Saved Addresses',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.bodoniModa(
-                      fontSize: 30,
-                      height: 36 / 30,
-                      color: _text,
-                    ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.arrow_back_ios_new_rounded, color: _luxGold, size: 20),
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Where shall we deliver your\nacquisitions?',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.cormorantGaramond(
-                      fontSize: 18,
-                      height: 28 / 18,
-                      color: _muted.withValues(alpha: 0.85),
-                      fontStyle: FontStyle.italic,
-                    ),
+                  Expanded(
+                    child: Text('Saved Addresses', textAlign: TextAlign.center, style: GoogleFonts.bodoniModa(fontSize: 24, color: _text)),
                   ),
-                  const SizedBox(height: 24),
-                  _AddressCard(
-                    selected: true,
-                    tag: 'HOME',
-                    showDefault: true,
-                    name: 'Eleanor Vance',
-                    addressLines: const [
-                      '1242 Parallax Avenue',
-                      'Suite 400',
-                      'New York, NY 10012',
-                      'United States',
-                    ],
-                    phone: '+1 (555) 019-2834',
-                  ),
-                  const SizedBox(height: 22),
-                  _AddressCard(
-                    selected: false,
-                    tag: 'OFFICE',
-                    showDefault: false,
-                    name: 'Eleanor Vance',
-                    addressLines: const [
-                      'The Crain Building',
-                      '880 Corporate Blvd, Floor 42',
-                      'Chicago, IL 60601',
-                      'United States',
-                    ],
-                    phone: '+1 (555) 832-1100',
-                  ),
-                  const SizedBox(height: 24),
+                  const SizedBox(width: 48),
                 ],
               ),
             ),
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              child: SafeArea(
-                bottom: false,
-                child: Container(
-                  height: 64,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  color: const Color.fromRGBO(8, 8, 8, 0.85),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.of(context).maybePop(),
-                        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: _luxGold),
-                      ),
-                      Expanded(
-                        child: Center(
-                          child: Text(
-                            'ATELIER',
-                            style: GoogleFonts.libreBaskerville(
-                              fontSize: 18,
-                              letterSpacing: 6,
-                              color: _text,
-                              fontWeight: FontWeight.w400,
+            Expanded(
+              child: user == null
+                  ? Center(child: Text('Sign in to manage addresses.', style: GoogleFonts.manrope(color: _muted)))
+                  : addressesAsync.when(
+                      data: (list) => list.isEmpty
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Text('No saved addresses yet. Add one for faster checkout.', textAlign: TextAlign.center, style: GoogleFonts.manrope(color: _muted)),
+                              ),
+                            )
+                          : ListView.separated(
+                              padding: const EdgeInsets.all(24),
+                              itemCount: list.length,
+                              separatorBuilder: (_, __) => const SizedBox(height: 12),
+                              itemBuilder: (context, i) => _AddressTile(
+                                address: list[i],
+                                onDelete: () {
+                                  final r = ref.read(userRepositoryProvider);
+                                  if (r == null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Addresses are unavailable on Windows desktop. Use Android or Chrome.'),
+                                      ),
+                                    );
+                                    return;
+                                  }
+                                  r.deleteAddress(user.uid, list[i].id);
+                                },
+                              ),
                             ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 40),
-                    ],
+                      loading: () => const Center(child: CircularProgressIndicator(color: _luxGold)),
+                      error: (e, _) => Center(child: Text('Could not load addresses.', style: GoogleFonts.manrope(color: _muted))),
+                    ),
+            ),
+            if (user != null)
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: () => _showAddSheet(context, ref, user.uid),
+                    style: FilledButton.styleFrom(backgroundColor: _luxGold, foregroundColor: const Color(0xFF2A2420), padding: const EdgeInsets.symmetric(vertical: 16)),
+                    child: const Text('ADD NEW ADDRESS'),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),
     );
   }
-}
 
-class _AddressCard extends StatelessWidget {
-  const _AddressCard({
-    required this.selected,
-    required this.tag,
-    required this.showDefault,
-    required this.name,
-    required this.addressLines,
-    required this.phone,
-  });
+  Future<void> _showAddSheet(BuildContext context, WidgetRef ref, String uid) async {
+    final tag = TextEditingController(text: 'HOME');
+    final name = TextEditingController();
+    final phone = TextEditingController();
+    final street = TextEditingController();
+    final city = TextEditingController(text: 'Colombo');
+    final postal = TextEditingController();
+    var isDefault = true;
 
-  final bool selected;
-  final String tag;
-  final bool showDefault;
-  final String name;
-  final List<String> addressLines;
-  final String phone;
-
-  static const _surface = Color(0xFF2A2420);
-  static const _text = Color(0xFFF5F0E8);
-  static const _muted = Color(0xFFD0C5B2);
-
-  @override
-  Widget build(BuildContext context) {
-    final border = selected ? const Color.fromRGBO(184, 150, 62, 0.55) : const Color.fromRGBO(208, 197, 178, 0.12);
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-      decoration: BoxDecoration(
-        color: _surface,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: border, width: 1),
-        boxShadow: const [BoxShadow(color: Color.fromRGBO(0, 0, 0, 0.35), blurRadius: 40, offset: Offset(0, 20))],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _TagPill(label: tag, filled: selected),
-              const SizedBox(width: 12),
-              if (showDefault) ...[
-                const Icon(Icons.check_circle_rounded, size: 14, color: _muted),
-                const SizedBox(width: 6),
-                Text(
-                  'DEFAULT',
-                  style: GoogleFonts.poppins(fontSize: 10, height: 16 / 10, letterSpacing: 2, color: _muted),
-                ),
-              ] else ...[
-                const Spacer(),
-                Icon(Icons.radio_button_unchecked_rounded, size: 18, color: _muted.withValues(alpha: 0.7)),
-              ],
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            name,
-            style: GoogleFonts.bodoniModa(fontSize: 22, height: 28 / 22, color: _text),
-          ),
-          const SizedBox(height: 10),
-          for (final line in addressLines)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text(
-                line,
-                style: GoogleFonts.cormorantGaramond(fontSize: 16, height: 22 / 16, color: _muted.withValues(alpha: 0.9)),
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1C1B1B),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(24, 24, 24, 24 + MediaQuery.viewInsetsOf(ctx).bottom),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _field('Label (HOME / OFFICE)', tag),
+            _field('Full name', name),
+            _field('Phone', phone, keyboard: TextInputType.phone),
+            _field('Street', street),
+            _field('City', city),
+            _field('Postal code', postal),
+            const SizedBox(height: 12),
+            StatefulBuilder(
+              builder: (context, setSt) => CheckboxListTile(
+                value: isDefault,
+                onChanged: (v) => setSt(() => isDefault = v ?? true),
+                title: Text('Default address', style: GoogleFonts.manrope(color: _text, fontSize: 14)),
+                activeColor: _luxGold,
               ),
             ),
-          const SizedBox(height: 2),
-          Text(
-            phone,
-            style: GoogleFonts.poppins(fontSize: 12, height: 18 / 12, color: _muted.withValues(alpha: 0.9)),
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              _ActionLink(icon: Icons.edit_outlined, label: 'EDIT', onTap: () {}),
-              const SizedBox(width: 22),
-              _ActionLink(icon: Icons.delete_outline_rounded, label: 'DELETE', onTap: () {}, muted: !selected),
-              const Spacer(),
-              if (selected)
-                Container(
-                  width: 3,
-                  height: 0, // placeholder to keep layout similar, left strip is drawn outside
-                  color: Colors.transparent,
-                ),
-            ],
-          ),
-        ],
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () async {
+                final repo = ref.read(userRepositoryProvider);
+                if (repo == null) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      const SnackBar(
+                        content: Text('Addresses are unavailable on Windows desktop. Use Android or Chrome.'),
+                      ),
+                    );
+                  }
+                  return;
+                }
+                final addr = SavedAddress(
+                  id: '',
+                  tag: tag.text.trim().toUpperCase(),
+                  fullName: name.text.trim(),
+                  phone: phone.text.trim(),
+                  street: street.text.trim(),
+                  apt: '',
+                  city: city.text.trim(),
+                  postalCode: postal.text.trim(),
+                  country: 'Sri Lanka',
+                  isDefault: isDefault,
+                );
+                await repo.saveAddress(uid, addr);
+                if (ctx.mounted) Navigator.of(ctx).pop();
+              },
+              style: FilledButton.styleFrom(backgroundColor: _luxGold, foregroundColor: const Color(0xFF2A2420), minimumSize: const Size.fromHeight(48)),
+              child: const Text('SAVE'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    tag.dispose();
+    name.dispose();
+    phone.dispose();
+    street.dispose();
+    city.dispose();
+    postal.dispose();
+  }
+
+  Widget _field(String label, TextEditingController c, {TextInputType? keyboard}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: c,
+        keyboardType: keyboard,
+        style: GoogleFonts.manrope(color: _text),
+        decoration: InputDecoration(labelText: label, labelStyle: GoogleFonts.manrope(color: _muted)),
       ),
     );
   }
 }
 
-class _TagPill extends StatelessWidget {
-  const _TagPill({required this.label, required this.filled});
-  final String label;
-  final bool filled;
+class _AddressTile extends StatelessWidget {
+  const _AddressTile({required this.address, required this.onDelete});
+  final SavedAddress address;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: filled ? const Color.fromRGBO(184, 150, 62, 0.25) : const Color.fromRGBO(0, 0, 0, 0.0),
-        borderRadius: BorderRadius.circular(9999),
-        border: Border.all(color: const Color.fromRGBO(208, 197, 178, 0.18)),
+        color: const Color(0xFF2A2420),
+        border: Border.all(color: address.isDefault ? const Color(0xFFB8963E) : const Color.fromRGBO(78, 70, 57, 0.35)),
+        borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        label,
-        style: GoogleFonts.poppins(fontSize: 10, height: 16 / 10, letterSpacing: 2.0, color: const Color(0xFFD0C5B2)),
-      ),
-    );
-  }
-}
-
-class _ActionLink extends StatelessWidget {
-  const _ActionLink({required this.icon, required this.label, required this.onTap, this.muted = false});
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final bool muted;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = muted ? const Color(0xFFD0C5B2).withValues(alpha: 0.55) : const Color(0xFFB8963E);
-    return GestureDetector(
-      onTap: onTap,
       child: Row(
         children: [
-          Icon(icon, size: 16, color: color),
-          const SizedBox(width: 8),
-          Text(label, style: GoogleFonts.poppins(fontSize: 12, height: 16 / 12, letterSpacing: 2.4, color: color)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${address.tag}${address.isDefault ? ' · DEFAULT' : ''}', style: GoogleFonts.manrope(fontSize: 11, letterSpacing: 1.2, color: const Color(0xFFB8963E))),
+                const SizedBox(height: 6),
+                Text(address.fullName, style: GoogleFonts.manrope(fontSize: 15, color: const Color(0xFFF5F0E8))),
+                Text('${address.street}, ${address.city} ${address.postalCode}', style: GoogleFonts.manrope(fontSize: 13, color: const Color(0xFFD0C5B2))),
+                Text(address.phone, style: GoogleFonts.manrope(fontSize: 12, color: const Color(0xFF8A8278))),
+              ],
+            ),
+          ),
+          IconButton(onPressed: onDelete, icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFC78B94))),
         ],
       ),
     );
   }
 }
-

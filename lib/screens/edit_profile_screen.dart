@@ -1,27 +1,147 @@
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'dart:io';
 
-class EditProfileScreen extends StatefulWidget {
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../data/models/user_profile.dart';
+import '../state/providers.dart';
+import '../widgets/profile_circle_avatar.dart';
+
+class EditProfileScreen extends ConsumerStatefulWidget {
   const EditProfileScreen({super.key});
 
   @override
-  State<EditProfileScreen> createState() => _EditProfileScreenState();
+  ConsumerState<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
-class _EditProfileScreenState extends State<EditProfileScreen> {
+class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   static const _bg = Color(0xFF080808);
   static const _text = Color(0xFFF5F0E8);
   static const _muted = Color(0xFFD0C5B2);
 
-  final _firstName = TextEditingController(text: 'Eleanor');
-  final _lastName = TextEditingController(text: 'Vance');
-  final _bio = TextEditingController(
-    text: 'Curator of fine spaces and collector\nof quiet moments. New York based.',
-  );
-  final _email = TextEditingController(text: 'eleanor.vance@atelier.com');
-  final _phone = TextEditingController(text: '+1 (555) 019-2349');
+  final _firstName = TextEditingController();
+  final _lastName = TextEditingController();
+  final _bio = TextEditingController();
+  final _email = TextEditingController();
+  final _phone = TextEditingController();
 
-  final Set<String> _styles = {'Classic', 'Avant-Garde'};
+  final Set<String> _styles = {};
+  bool _loading = true;
+  String? _avatarUrl;
+  bool _uploadingPhoto = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _hydrate();
+  }
+
+  Future<void> _hydrate() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null) {
+      setState(() => _loading = false);
+      return;
+    }
+    final repo = ref.read(userRepositoryProvider);
+    final UserProfile merged;
+    if (repo == null) {
+      merged = UserProfile.fromFirebaseUser(user);
+    } else {
+      final fs = await repo.getProfile(user.uid);
+      merged = _mergeProfile(user, fs);
+    }
+    if (!mounted) return;
+    final parts = merged.fullName.trim().split(RegExp(r'\s+'));
+    _firstName.text = parts.isNotEmpty ? parts.first : '';
+    _lastName.text = parts.length > 1 ? parts.sublist(1).join(' ') : '';
+    _email.text = merged.email;
+    _phone.text = merged.phone ?? '';
+    _bio.text = (merged.bio ?? '').trim();
+    _styles
+      ..clear()
+      ..addAll(merged.styles);
+    final av = merged.photoUrl?.trim();
+    setState(() {
+      _loading = false;
+      _avatarUrl = (av != null && av.isNotEmpty) ? av : null;
+    });
+  }
+
+  /// Prefer Firestore `users/{uid}` fields when set; otherwise Firebase Auth (e.g. displayName).
+  UserProfile _mergeProfile(User user, UserProfile firestore) {
+    final auth = UserProfile.fromFirebaseUser(user);
+    return UserProfile(
+      uid: auth.uid,
+      fullName: firestore.fullName.trim().isNotEmpty ? firestore.fullName.trim() : auth.fullName,
+      email: firestore.email.trim().isNotEmpty ? firestore.email.trim() : auth.email,
+      phone: (firestore.phone != null && firestore.phone!.trim().isNotEmpty) ? firestore.phone!.trim() : auth.phone,
+      createdAt: firestore.createdAt ?? auth.createdAt,
+      bio: (firestore.bio != null && firestore.bio!.trim().isNotEmpty) ? firestore.bio!.trim() : auth.bio,
+      styles: firestore.styles.isNotEmpty ? List<String>.from(firestore.styles) : List<String>.from(auth.styles),
+      photoUrl: (firestore.photoUrl != null && firestore.photoUrl!.trim().isNotEmpty)
+          ? firestore.photoUrl!.trim()
+          : auth.photoUrl,
+    );
+  }
+
+  Future<void> _pickAndUploadPhoto() async {
+    if (kIsWeb) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Profile photos cannot be changed from the web build yet.')),
+      );
+      return;
+    }
+    final user = ref.read(currentUserProvider);
+    if (user == null) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    final repo = ref.read(userRepositoryProvider);
+    if (repo == null) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Profile cloud sync is unavailable on Windows desktop. Use Android or Chrome.'),
+        ),
+      );
+      return;
+    }
+
+    final picker = ImagePicker();
+    final xFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 1024,
+      maxHeight: 1024,
+      imageQuality: 85,
+    );
+    if (xFile == null || !mounted) return;
+
+    setState(() => _uploadingPhoto = true);
+    try {
+      final file = File(xFile.path);
+      final refStorage = FirebaseStorage.instance
+          .ref()
+          .child('users/${user.uid}/profile_${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await refStorage.putFile(file, SettableMetadata(contentType: 'image/jpeg'));
+      final url = await refStorage.getDownloadURL();
+      await user.updatePhotoURL(url);
+      await user.reload();
+      await repo.updateProfile(user.uid, {'photoUrl': url});
+      if (!mounted) return;
+      setState(() {
+        _avatarUrl = url;
+        _uploadingPhoto = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _uploadingPhoto = false);
+      messenger.showSnackBar(SnackBar(content: Text('Could not update photo. $e')));
+    }
+  }
 
   @override
   void dispose() {
@@ -56,7 +176,11 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 22),
-                  _Avatar(onTap: () {}),
+                  _Avatar(
+                    imageUrl: _avatarUrl,
+                    uploading: _uploadingPhoto,
+                    onChangePhoto: _pickAndUploadPhoto,
+                  ),
                   const SizedBox(height: 20),
                   _SectionCard(
                     title: 'PERSONAL DETAILS',
@@ -144,7 +268,43 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         ),
                       ),
                       TextButton(
-                        onPressed: () => Navigator.of(context).maybePop(),
+                        onPressed: _loading
+                            ? null
+                            : () async {
+                                final nav = Navigator.of(context);
+                                final messenger = ScaffoldMessenger.of(context);
+                                final user = ref.read(currentUserProvider);
+                                if (user == null) return;
+                                final fullName = '${_firstName.text.trim()} ${_lastName.text.trim()}'.trim();
+                                final repo = ref.read(userRepositoryProvider);
+                                if (repo == null) {
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Profile cloud sync is unavailable on Windows desktop. Use Android or Chrome.',
+                                      ),
+                                    ),
+                                  );
+                                  nav.maybePop();
+                                  return;
+                                }
+                                try {
+                                  await repo.updateProfile(user.uid, {
+                                        'fullName': fullName,
+                                        'email': _email.text.trim(),
+                                        'phone': _phone.text.trim(),
+                                        'bio': _bio.text.trim(),
+                                        'styles': _styles.toList(),
+                                      });
+                                  if (!mounted) return;
+                                  nav.maybePop();
+                                } catch (e) {
+                                  if (!mounted) return;
+                                  messenger.showSnackBar(
+                                    SnackBar(content: Text('Could not save profile. ${e.toString()}')),
+                                  );
+                                }
+                              },
                         child: Text('SAVE', style: GoogleFonts.poppins(fontSize: 12, letterSpacing: 2.4, color: _text)),
                       ),
                     ],
@@ -165,7 +325,43 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     children: [
                       _PrimaryButton(
                         label: 'SAVE CHANGES',
-                        onTap: () => Navigator.of(context).maybePop(),
+                        onTap: _loading
+                            ? () {}
+                            : () async {
+                                final nav = Navigator.of(context);
+                                final messenger = ScaffoldMessenger.of(context);
+                                final user = ref.read(currentUserProvider);
+                                if (user == null) return;
+                                final fullName = '${_firstName.text.trim()} ${_lastName.text.trim()}'.trim();
+                                final repo = ref.read(userRepositoryProvider);
+                                if (repo == null) {
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                        'Profile cloud sync is unavailable on Windows desktop. Use Android or Chrome.',
+                                      ),
+                                    ),
+                                  );
+                                  nav.maybePop();
+                                  return;
+                                }
+                                try {
+                                  await repo.updateProfile(user.uid, {
+                                        'fullName': fullName,
+                                        'email': _email.text.trim(),
+                                        'phone': _phone.text.trim(),
+                                        'bio': _bio.text.trim(),
+                                        'styles': _styles.toList(),
+                                      });
+                                  if (!mounted) return;
+                                  nav.maybePop();
+                                } catch (e) {
+                                  if (!mounted) return;
+                                  messenger.showSnackBar(
+                                    SnackBar(content: Text('Could not save profile. ${e.toString()}')),
+                                  );
+                                }
+                              },
                       ),
                       const SizedBox(height: 12),
                       _SecondaryButton(
@@ -195,29 +391,51 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 }
 
 class _Avatar extends StatelessWidget {
-  const _Avatar({required this.onTap});
-  final VoidCallback onTap;
+  const _Avatar({required this.imageUrl, required this.uploading, required this.onChangePhoto});
+
+  final String? imageUrl;
+  final bool uploading;
+  final VoidCallback onChangePhoto;
 
   @override
   Widget build(BuildContext context) {
+    const outer = 96.0;
+    const pad = 5.0;
+    final inner = outer - pad * 2;
     return Column(
       children: [
         Container(
-          width: 96,
-          height: 96,
-          padding: const EdgeInsets.all(5),
+          width: outer,
+          height: outer,
+          padding: const EdgeInsets.all(pad),
           decoration: BoxDecoration(
             border: Border.all(color: const Color(0xFFB8963E), width: 1),
             borderRadius: BorderRadius.circular(9999),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(9999),
-            child: Image.asset('assets/images/profile_sofia_reyes.png', fit: BoxFit.cover),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                ProfileCircleAvatar(url: imageUrl, size: inner),
+                if (uploading)
+                  const ColoredBox(
+                    color: Color(0x66000000),
+                    child: Center(
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFB8963E)),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
         const SizedBox(height: 10),
         GestureDetector(
-          onTap: onTap,
+          onTap: uploading ? null : onChangePhoto,
           child: Text(
             'CHANGE PHOTO',
             style: GoogleFonts.poppins(fontSize: 10, height: 16 / 10, letterSpacing: 2, color: const Color(0xFFB8963E)),

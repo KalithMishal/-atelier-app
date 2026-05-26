@@ -1,27 +1,27 @@
-import 'dart:ui';
-
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
-
-import 'product_listing_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'screens_hub_screen.dart';
 import 'search_discovery_screen.dart';
 import 'shopping_bag_screen.dart';
-import 'category_landing_screen.dart';
-import 'product_detail_screen.dart';
-import 'wishlist_screen.dart';
-import 'profile_screen.dart';
 import 'notifications_screen.dart';
+import 'login_screen.dart';
+import '../state/providers.dart';
+import '../data/models/user_profile.dart';
+import '../widgets/atelier_bottom_nav.dart';
+import '../widgets/atelier_home_page.dart';
 
-class HomeScreen extends StatefulWidget {
+/// Home — layout and content are controlled by [atelier_home_config.dart].
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _activeBottomIndex = 0;
   int _activeCategoryIndex = 0;
 
@@ -31,26 +31,22 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _textPrimary = Color(0xFFE5E2E1);
   static const _textMuted = Color(0xFFD1C5B4);
   static const _accent = Color(0xFFE9C349);
-
   static const _border = Color.fromRGBO(78, 70, 57, 0.20);
   static const _cardBg = Color(0xFF1C1B1B);
 
-  final _categories = const ['ALL', 'WOMEN', 'MEN', 'ACCESSORIES'];
-
-  final _products = const [
-    _Product('The Nude Tote', '\$1,250', 'assets/images/product_nude_tote.png'),
-    _Product('Architectural Drops', '\$480', 'assets/images/product_architectural_drops.png'),
-    _Product('Silk Slip Dress', '\$890', 'assets/images/product_silk_slip_dress.png'),
-    _Product('Sculptural Heels', '\$1,100', 'assets/images/product_sculptural_heels.png'),
-  ];
+  void _selectCategory(int index) => setState(() => _activeCategoryIndex = index);
 
   @override
   Widget build(BuildContext context) {
+    final featuredAsync = ref.watch(featuredProductsProvider);
+
     return Scaffold(
       backgroundColor: _bg,
       body: LayoutBuilder(
         builder: (context, constraints) {
-          // Web mode: use the full available width (no 390px frame).
+          final bannerHeight = constraints.maxWidth >= 900 ? 380.0 : 280.0;
+          final gridCols = constraints.maxWidth >= 1000 ? 4 : (constraints.maxWidth >= 700 ? 3 : 2);
+
           return SafeArea(
             bottom: false,
             child: Stack(
@@ -63,66 +59,45 @@ class _HomeScreenState extends State<HomeScreen> {
                       iconColor: _topBarIcon,
                     ),
                     Expanded(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(16, 24, 16, 96),
-                        child: Center(
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 1100),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _HeroCard(
-                                  accent: _accent,
-                                  titleColor: _textPrimary,
+                      child: RefreshIndicator(
+                        color: _accent,
+                        onRefresh: () async {
+                          ref.invalidate(featuredProductsProvider);
+                          ref.invalidate(allProductsProvider);
+                          await ref.read(featuredProductsProvider.future);
+                        },
+                        child: SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.only(top: 8, bottom: 96),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 20),
+                              child: Center(
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(maxWidth: 1100),
+                                  child: _HomeGreeting(accent: _accent, muted: _textMuted),
                                 ),
-                                const SizedBox(height: 48),
-                                _CategoryRow(
-                                  categories: _categories,
-                                  activeIndex: _activeCategoryIndex,
-                                  onTap: (idx) => setState(() => _activeCategoryIndex = idx),
-                                  accent: _accent,
-                                  muted: _textMuted,
-                                  border: _border,
-                                ),
-                                const SizedBox(height: 48),
-                                _SectionHeader(
-                                  title: 'ATELIER PICKS',
-                                  action: 'VIEW ALL',
-                                  titleColor: _textPrimary,
-                                  actionColor: _textMuted,
-                                  onActionTap: () {
-                                    Navigator.of(context).push(
-                                      MaterialPageRoute(builder: (_) => const ProductListingScreen()),
-                                    );
-                                  },
-                                ),
-                                const SizedBox(height: 24),
-                                GridView.builder(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: _products.length,
-                                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: constraints.maxWidth >= 1000 ? 4 : (constraints.maxWidth >= 700 ? 3 : 2),
-                                    mainAxisSpacing: 16,
-                                    crossAxisSpacing: 16,
-                                    childAspectRatio: 1 / 1.38,
-                                  ),
-                                  itemBuilder: (context, index) {
-                                    final p = _products[index];
-                                    return _ProductCard(
-                                      title: p.title,
-                                      price: p.price,
-                                      imageAssetPath: p.imageAssetPath,
-                                      accent: _accent,
-                                      titleColor: _textPrimary,
-                                      cardBg: _cardBg,
-                                    );
-                                  },
-                                ),
-                              ],
+                              ),
                             ),
-                          ),
+                            AtelierHomePage(
+                          productsAsync: featuredAsync,
+                          activeCategoryIndex: _activeCategoryIndex,
+                          onCategorySelected: _selectCategory,
+                          onSeedCatalogue: _SampleCatalogueSeed(accent: _accent, muted: _textMuted),
+                          accent: _accent,
+                          titleColor: _textPrimary,
+                          mutedColor: _textMuted,
+                          borderColor: _border,
+                          cardBg: _cardBg,
+                          bannerHeight: bannerHeight,
+                          maxContentWidth: 1100,
+                          gridCrossAxisCount: gridCols,
+                            ),
+                          ],
                         ),
+                      ),
                       ),
                     ),
                   ],
@@ -134,13 +109,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: SafeArea(
                     top: false,
                     child: Center(
-                      child: _BottomNavBar(
-                        activeIndex: _activeBottomIndex,
-                        onTap: (idx) {
-                          setState(() => _activeBottomIndex = idx);
-                          _navigateBottom(context, idx);
-                        },
-                        accent: _accent,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: AtelierBottomNavBar.pill(
+                          activeIndex: _activeBottomIndex,
+                          onTap: (idx) {
+                            setState(() => _activeBottomIndex = idx);
+                            _navigateBottom(context, idx);
+                          },
+                          accent: _accent,
+                          maxWidth: constraints.maxWidth - 32,
+                        ),
                       ),
                     ),
                   ),
@@ -155,21 +134,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _navigateBottom(BuildContext context, int idx) {
     if (idx == 0) return;
-    Widget target;
-    switch (idx) {
-      case 1:
-        target = const ProductListingScreen();
-        break;
-      case 2:
-        target = const WishlistScreen();
-        break;
-      case 3:
-        target = const ProfileScreen();
-        break;
-      default:
-        target = const HomeScreen();
-    }
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => target));
+    AtelierBottomNav.go(context, idx);
   }
 }
 
@@ -201,19 +166,18 @@ class _TopAppBar extends StatelessWidget {
               child: LayoutBuilder(
                 builder: (context, constraints) {
                   final rightClusterWidth = (_iconSlot * 3) + (_iconGap * 2);
-                  final leftClusterWidth = _iconSlot;
-                  final availableForTitle = constraints.maxWidth - leftClusterWidth - rightClusterWidth;
+                  final availableForTitle = constraints.maxWidth - _iconSlot - rightClusterWidth;
 
                   return Row(
                     children: [
                       SizedBox(
-                        width: leftClusterWidth,
+                        width: _iconSlot,
                         child: IconButton(
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(builder: (_) => const ScreensHubScreen()),
-                            );
-                          },
+                          onPressed: kDebugMode
+                              ? () => Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const ScreensHubScreen()),
+                                  )
+                              : null,
                           icon: Icon(Icons.menu_rounded, color: iconColor, size: 22),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints.tightFor(width: _iconSlot, height: _iconSlot),
@@ -230,7 +194,6 @@ class _TopAppBar extends StatelessWidget {
                                 fontSize: 24,
                                 letterSpacing: 7.2,
                                 color: titleColor,
-                                fontWeight: FontWeight.w400,
                               ),
                             ),
                           ),
@@ -242,33 +205,20 @@ class _TopAppBar extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             IconButton(
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => const SearchDiscoveryScreen()),
-                                );
-                              },
+                              onPressed: () => Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => const SearchDiscoveryScreen()),
+                              ),
                               icon: Icon(Icons.search_rounded, color: iconColor, size: 22),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints.tightFor(width: _iconSlot, height: _iconSlot),
                             ),
                             const SizedBox(width: _iconGap),
-                            IconButton(
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => const ShoppingBagScreen()),
-                                );
-                              },
-                              icon: Icon(Icons.shopping_bag_outlined, color: iconColor, size: 20),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints.tightFor(width: _iconSlot, height: _iconSlot),
-                            ),
+                            _CartIconButton(iconColor: iconColor, slot: _iconSlot),
                             const SizedBox(width: _iconGap),
                             IconButton(
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(builder: (_) => const NotificationsScreen()),
-                                );
-                              },
+                              onPressed: () => Navigator.of(context).push(
+                                MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                              ),
                               icon: Icon(Icons.notifications_none_rounded, color: iconColor, size: 22),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints.tightFor(width: _iconSlot, height: _iconSlot),
@@ -288,444 +238,216 @@ class _TopAppBar extends StatelessWidget {
   }
 }
 
-class _HeroCard extends StatelessWidget {
-  const _HeroCard({
-    required this.accent,
-    required this.titleColor,
-  });
+class _HomeGreeting extends ConsumerWidget {
+  const _HomeGreeting({required this.accent, required this.muted});
 
-  final Color accent;
-  final Color titleColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: AspectRatio(
-        aspectRatio: 358 / 530,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xFF111111),
-                    Color(0xFF0E0E0E),
-                  ],
-                ),
-              ),
-              child: Opacity(
-                opacity: 0.9,
-                child: Image.asset(
-                  'assets/images/home_hero.png',
-                  fit: BoxFit.cover,
-                ),
-              ),
-            ),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: [0.0, 0.55, 1.0],
-                  colors: [
-                    Color.fromRGBO(14, 14, 14, 0.0),
-                    Color.fromRGBO(14, 14, 14, 0.5),
-                    Color(0xFF0E0E0E),
-                  ],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text(
-                    'FALL / WINTER COLLECTION',
-                    style: GoogleFonts.manrope(
-                      fontSize: 16,
-                      letterSpacing: 3.2,
-                      color: accent,
-                      height: 24 / 16,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'The New\nSilhouette',
-                    style: GoogleFonts.notoSerif(
-                      fontSize: 36,
-                      letterSpacing: -0.9,
-                      height: 45 / 36,
-                      color: titleColor,
-                      fontWeight: FontWeight.w400,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const CategoryLandingScreen()),
-                      );
-                    },
-                    child: _UnderlinedLink(text: 'DISCOVER MORE', color: accent),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _UnderlinedLink extends StatelessWidget {
-  const _UnderlinedLink({required this.text, required this.color});
-
-  final String text;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return IntrinsicWidth(
-      child: Container(
-        padding: const EdgeInsets.only(bottom: 5),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: _HomeScreenState._border,
-              width: 1,
-            ),
-          ),
-        ),
-        child: Text(
-          text,
-          style: GoogleFonts.manrope(
-            fontSize: 14,
-            letterSpacing: 1.4,
-            color: color,
-            height: 20 / 14,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CategoryRow extends StatelessWidget {
-  const _CategoryRow({
-    required this.categories,
-    required this.activeIndex,
-    required this.onTap,
-    required this.accent,
-    required this.muted,
-    required this.border,
-  });
-
-  final List<String> categories;
-  final int activeIndex;
-  final ValueChanged<int> onTap;
   final Color accent;
   final Color muted;
-  final Color border;
 
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 50,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: categories.length,
-        separatorBuilder: (context, index) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          final isActive = index == activeIndex;
-          return GestureDetector(
-            onTap: () {
-              onTap(index);
-              if (index != 0) {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const CategoryLandingScreen()),
-                );
-              }
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              padding: EdgeInsets.symmetric(horizontal: isActive ? 24 : 25, vertical: isActive ? 9.5 : 9),
-              decoration: BoxDecoration(
-                color: isActive ? const Color(0xFF2A2A2A) : Colors.transparent,
-                borderRadius: BorderRadius.circular(12),
-                border: isActive ? null : Border.all(color: border, width: 1),
-              ),
-              alignment: Alignment.center,
-              child: Text(
-                categories[index],
-                style: GoogleFonts.manrope(
-                  fontSize: 12,
-                  letterSpacing: 1.2,
-                  color: isActive ? accent : muted,
-                  height: 16 / 12,
-                ),
-              ),
-            ),
-          );
-        },
-      ),
-    );
+  String _timeGreeting() {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
   }
-}
 
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({
-    required this.title,
-    required this.action,
-    required this.titleColor,
-    required this.actionColor,
-    required this.onActionTap,
-  });
-
-  final String title;
-  final String action;
-  final Color titleColor;
-  final Color actionColor;
-  final VoidCallback onActionTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            title,
-            style: GoogleFonts.notoSerif(
-              fontSize: 24,
-              letterSpacing: 0.6,
-              color: titleColor,
-              height: 32 / 24,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-          InkWell(
-            onTap: onActionTap,
-            borderRadius: BorderRadius.circular(8),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Text(
-                action,
-                style: GoogleFonts.manrope(
-                  fontSize: 12,
-                  letterSpacing: 1.2,
-                  color: actionColor,
-                  height: 16 / 12,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  static String _firstName(String full) {
+    final t = full.trim();
+    if (t.isEmpty) return '';
+    return t.split(RegExp(r'\s+')).first;
   }
-}
 
-class _ProductCard extends StatelessWidget {
-  const _ProductCard({
-    required this.title,
-    required this.price,
-    required this.imageAssetPath,
-    required this.accent,
-    required this.titleColor,
-    required this.cardBg,
-  });
+  static String _localPart(String? email) {
+    if (email == null) return '';
+    final t = email.trim();
+    final at = t.indexOf('@');
+    if (at <= 0) return '';
+    return t.substring(0, at);
+  }
 
-  final String title;
-  final String price;
-  final String imageAssetPath;
-  final Color accent;
-  final Color titleColor;
-  final Color cardBg;
+  static String _prettyLocal(String local) {
+    if (local.isEmpty) return '';
+    final clean = local.replaceAll(RegExp(r'[._-]+'), ' ').trim();
+    if (clean.isEmpty) return '';
+    return clean[0].toUpperCase() + clean.substring(1).toLowerCase();
+  }
+
+  /// Firestore profile → Auth displayName / email — never generic “there”.
+  static String displayName(User? user, UserProfile? profile) {
+    if (profile != null) {
+      final n = _firstName(profile.fullName);
+      if (n.isNotEmpty) return n;
+      final fromProf = _prettyLocal(_localPart(profile.email));
+      if (fromProf.isNotEmpty) return fromProf;
+    }
+    if (user != null) {
+      final dn = _firstName(user.displayName ?? '');
+      if (dn.isNotEmpty) return dn;
+      final fromMail = _prettyLocal(_localPart(user.email));
+      if (fromMail.isNotEmpty) return fromMail;
+    }
+    return 'friend';
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () {
-        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ProductDetailScreen()));
-      },
-      child: Column(
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final profile = ref.watch(userProfileProvider).value;
+    final displayName = _HomeGreeting.displayName(user, profile);
+
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Expanded(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(0),
-            child: Container(
-              color: cardBg,
-              child: Opacity(
-                opacity: 0.8,
-                child: Image.asset(
-                  imageAssetPath,
-                  fit: BoxFit.cover,
-                  width: double.infinity,
+        Text(
+          '${_timeGreeting()}, $displayName',
+          style: GoogleFonts.notoSerif(fontSize: 26, height: 1.2, color: const Color(0xFFE5E2E1)),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Shop men, women, kids & accessories from Sri Lankan brands',
+          style: GoogleFonts.manrope(fontSize: 13, color: muted),
+        ),
+        const SizedBox(height: 14),
+        Container(height: 1, color: accent.withValues(alpha: 0.15)),
+      ],
+    );
+  }
+}
+
+class _CartIconButton extends ConsumerWidget {
+  const _CartIconButton({required this.iconColor, required this.slot});
+
+  final Color iconColor;
+  final double slot;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(cartItemsProvider).value?.length ?? 0;
+
+    return SizedBox(
+      width: slot,
+      height: slot,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          IconButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ShoppingBagScreen()),
+            ),
+            icon: Icon(Icons.shopping_bag_outlined, color: iconColor, size: 20),
+            padding: EdgeInsets.zero,
+            constraints: BoxConstraints.tightFor(width: slot, height: slot),
+          ),
+          if (count > 0)
+            Positioned(
+              top: 6,
+              right: 4,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE9C349),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  count > 9 ? '9+' : '$count',
+                  style: GoogleFonts.manrope(fontSize: 9, fontWeight: FontWeight.w800, color: const Color(0xFF2A2420)),
                 ),
               ),
             ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                title,
-                style: GoogleFonts.manrope(
-                  fontSize: 14,
-                  color: titleColor,
-                  height: 20 / 14,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                price,
-                style: GoogleFonts.manrope(
-                  fontSize: 14,
-                  color: accent,
-                  height: 20 / 14,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
       ),
     );
   }
 }
 
-class _BottomNavBar extends StatelessWidget {
-  const _BottomNavBar({
-    required this.activeIndex,
-    required this.onTap,
-    required this.accent,
-  });
+class _SampleCatalogueSeed extends ConsumerStatefulWidget {
+  const _SampleCatalogueSeed({required this.accent, required this.muted});
 
-  final int activeIndex;
-  final ValueChanged<int> onTap;
   final Color accent;
+  final Color muted;
+
+  @override
+  ConsumerState<_SampleCatalogueSeed> createState() => _SampleCatalogueSeedState();
+}
+
+class _SampleCatalogueSeedState extends ConsumerState<_SampleCatalogueSeed> {
+  bool _loading = false;
+
+  Future<void> _seed() async {
+    final user = ref.read(currentUserProvider);
+    if (user == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in first, then load sample products.')),
+      );
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginScreen()));
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      final repo = ref.read(productRepositoryProvider);
+      if (repo == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Cloud catalogue is unavailable on Windows desktop. Build for Android or run in Chrome to sync with Firestore.',
+            ),
+          ),
+        );
+        return;
+      }
+      await repo.seedSampleCatalogue();
+      ref.invalidate(allProductsProvider);
+      ref.invalidate(featuredProductsProvider);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Catalogue updated — old demo products removed. Each category now has its own items.',
+          ),
+          duration: Duration(seconds: 4),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not load samples. $e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Compact pill style (like the user's 2nd screenshot).
-    const barWidth = 390.0;
-    const bg = Color.fromRGBO(42, 36, 32, 0.99);
-    const inactive = Color(0xFFE5E2E1);
-    const activeBg = Color(0xFFB8963E);
-    const activeIcon = Color(0xFF3C2F00);
-
     return Container(
-      width: barWidth,
-      margin: const EdgeInsets.only(bottom: 0.2),
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFB8963E).withValues(alpha: 0.08),
-            blurRadius: 32,
-            offset: const Offset(0, -10),
+        color: const Color(0xFF1C1B1B),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color.fromRGBO(78, 70, 57, 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('No products yet', style: GoogleFonts.notoSerif(fontSize: 18, color: const Color(0xFFE5E2E1))),
+          const SizedBox(height: 8),
+          Text(
+            'Load sample catalogue — men, women, kids & accessories (LKR prices).',
+            style: GoogleFonts.manrope(fontSize: 13, color: widget.muted),
+          ),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: _loading ? null : _seed,
+            style: FilledButton.styleFrom(backgroundColor: widget.accent, foregroundColor: const Color(0xFF2A2420)),
+            child: _loading
+                ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Text('LOAD SAMPLE CATALOGUE'),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-            color: bg,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _NavButton(
-                  active: activeIndex == 0,
-                  activeBg: activeBg,
-                  icon: Icons.home_rounded,
-                  onTap: () => onTap(0),
-                  iconColor: activeIndex == 0 ? activeIcon : inactive,
-                ),
-                _NavButton(
-                  active: activeIndex == 1,
-                  activeBg: activeBg,
-                  icon: Icons.grid_view_rounded,
-                  onTap: () => onTap(1),
-                  iconColor: activeIndex == 1 ? activeIcon : inactive,
-                ),
-                _NavButton(
-                  active: activeIndex == 2,
-                  activeBg: activeBg,
-                  icon: Icons.favorite_border_rounded,
-                  onTap: () => onTap(2),
-                  iconColor: activeIndex == 2 ? activeIcon : inactive,
-                ),
-                _NavButton(
-                  active: activeIndex == 3,
-                  activeBg: activeBg,
-                  icon: Icons.person_outline_rounded,
-                  onTap: () => onTap(3),
-                  iconColor: activeIndex == 3 ? activeIcon : inactive,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
-
-class _NavButton extends StatelessWidget {
-  const _NavButton({
-    required this.active,
-    required this.activeBg,
-    required this.icon,
-    required this.onTap,
-    required this.iconColor,
-  });
-
-  final bool active;
-  final Color activeBg;
-  final IconData icon;
-  final VoidCallback onTap;
-  final Color iconColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 48,
-        width: 48,
-        decoration: BoxDecoration(
-          color: active ? activeBg : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        alignment: Alignment.center,
-        child: Icon(icon, color: iconColor, size: 22),
-      ),
-    );
-  }
-}
-
-class _Product {
-  const _Product(this.title, this.price, this.imageAssetPath);
-
-  final String title;
-  final String price;
-  final String imageAssetPath;
-}
-

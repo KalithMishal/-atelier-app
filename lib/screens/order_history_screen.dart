@@ -1,6 +1,8 @@
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'home_screen.dart';
@@ -8,15 +10,19 @@ import 'product_listing_screen.dart';
 import 'wishlist_screen.dart';
 import 'profile_screen.dart';
 import 'order_detail_screen.dart';
+import 'login_screen.dart';
+import '../data/models/store_order.dart';
+import '../state/providers.dart';
+import '../utils/format.dart';
 
-class OrderHistoryScreen extends StatefulWidget {
+class OrderHistoryScreen extends ConsumerStatefulWidget {
   const OrderHistoryScreen({super.key});
 
   @override
-  State<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
+  ConsumerState<OrderHistoryScreen> createState() => _OrderHistoryScreenState();
 }
 
-class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
+class _OrderHistoryScreenState extends ConsumerState<OrderHistoryScreen> {
   static const _bg = Color(0xFF131313);
   static const _title = Color(0xFFF5F0E8);
   static const _luxGold = Color(0xFFB8963E);
@@ -25,8 +31,22 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   int _activeTab = 0; // 0 all, 1 active, 2 delivered
   final int _activeBottomIndex = 0;
 
+  List<StoreOrder> _filterOrders(List<StoreOrder> orders) {
+    switch (_activeTab) {
+      case 1:
+        return orders.where((o) => o.isActive).toList();
+      case 2:
+        return orders.where((o) => o.isDelivered).toList();
+      default:
+        return orders;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final user = ref.watch(currentUserProvider);
+    final ordersAsync = ref.watch(userOrdersProvider);
+
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
@@ -69,57 +89,81 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                             const SizedBox(height: 18),
                             _Tabs(active: _activeTab, onTap: (i) => setState(() => _activeTab = i)),
                             const SizedBox(height: 24),
-                            LayoutBuilder(
-                              builder: (context, c) {
-                                final w = c.maxWidth;
-                                final columns = w >= 900 ? 2 : 1;
-                                const gap = 24.0;
-                                final itemW = columns == 1 ? w : (w - gap) / 2;
-
-                                Widget card({
-                                  required String orderNo,
-                                  required String placed,
-                                  required String status,
-                                  required String total,
-                                  required List<String> images,
-                                }) {
-                                  return SizedBox(
-                                    width: itemW,
-                                    child: _OrderCard(
-                                      orderNo: orderNo,
-                                      placed: placed,
-                                      status: status,
-                                      total: total,
-                                      images: images,
-                                      onViewDetails: () {
-                                        Navigator.of(context).push(MaterialPageRoute(builder: (_) => const OrderDetailScreen()));
-                                      },
-                                    ),
-                                  );
-                                }
-
-                                return Wrap(
-                                  spacing: gap,
-                                  runSpacing: gap,
+                            if (user == null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    card(
-                                      orderNo: 'ORDER #AT-8924',
-                                      placed: 'Placed on October 12, 2023',
-                                      status: 'ON ITS WAY',
-                                      total: '\$ 12,480',
-                                      images: const ['assets/images/wish_structured_tote.png', 'assets/images/bag_item_pumps.png'],
+                                    Text(
+                                      'Sign in to view your orders.',
+                                      style: GoogleFonts.manrope(fontSize: 14, color: const Color(0xFFD1C5B4)),
                                     ),
-                                    card(
-                                      orderNo: 'ORDER #AT-7512',
-                                      placed: 'Placed on September 05, 2023',
-                                      status: 'DELIVERED',
-                                      total: '\$ 4,200',
-                                      images: const ['assets/images/bag_item_necklace.png', 'assets/images/wish_gold_earrings.png'],
+                                    const SizedBox(height: 16),
+                                    TextButton(
+                                      onPressed: () => Navigator.of(context).push(
+                                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                                      ),
+                                      child: Text('SIGN IN', style: GoogleFonts.manrope(color: _luxGold)),
                                     ),
                                   ],
-                                );
-                              },
-                            ),
+                                ),
+                              )
+                            else
+                              ordersAsync.when(
+                                loading: () => const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 48),
+                                  child: Center(child: CircularProgressIndicator(color: _luxGold)),
+                                ),
+                                error: (e, _) => Text(
+                                  'Could not load orders. ${e.toString()}',
+                                  style: GoogleFonts.manrope(fontSize: 14, color: const Color(0xFFD1C5B4)),
+                                ),
+                                data: (orders) {
+                                  final filtered = _filterOrders(orders);
+                                  if (filtered.isEmpty) {
+                                    return Text(
+                                      orders.isEmpty
+                                          ? 'No orders yet. Start shopping to see your history here.'
+                                          : 'No orders in this tab.',
+                                      style: GoogleFonts.manrope(fontSize: 14, color: const Color(0xFFD1C5B4)),
+                                    );
+                                  }
+                                  return LayoutBuilder(
+                                    builder: (context, c) {
+                                      final w = c.maxWidth;
+                                      final columns = w >= 900 ? 2 : 1;
+                                      const gap = 24.0;
+                                      final itemW = columns == 1 ? w : (w - gap) / 2;
+
+                                      return Wrap(
+                                        spacing: gap,
+                                        runSpacing: gap,
+                                        children: [
+                                          for (final order in filtered)
+                                            SizedBox(
+                                              width: itemW,
+                                              child: _OrderCard(
+                                                orderNo: 'ORDER #${shortOrderId(order.id)}',
+                                                placed: 'Placed on ${formatOrderDate(order.createdAt?.toDate())}',
+                                                status: order.displayStatus,
+                                                total: formatMoney(order.total, currency: order.currency),
+                                                imageUrls: order.previewImageUrls,
+                                                onViewDetails: () {
+                                                  Navigator.of(context).push(
+                                                    MaterialPageRoute(
+                                                      builder: (_) => OrderDetailScreen(orderId: order.id),
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                            ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
                           ],
                         ),
                       ),
@@ -296,7 +340,7 @@ class _OrderCard extends StatelessWidget {
     required this.placed,
     required this.status,
     required this.total,
-    required this.images,
+    required this.imageUrls,
     required this.onViewDetails,
   });
 
@@ -304,7 +348,7 @@ class _OrderCard extends StatelessWidget {
   final String placed;
   final String status;
   final String total;
-  final List<String> images;
+  final List<String> imageUrls;
   final VoidCallback onViewDetails;
 
   static const _card = Color(0xFF2A2420);
@@ -345,30 +389,31 @@ class _OrderCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              for (int i = 0; i < images.length; i++) ...[
-                Expanded(
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: Container(
-                      height: 110,
-                      color: const Color(0xFF1C1B1B),
-                      child: Opacity(
-                        opacity: 0.9,
-                        child: Image.asset(
-                          images[i],
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => const ColoredBox(color: Color(0xFF201F1F)),
+          if (imageUrls.isNotEmpty)
+            Row(
+              children: [
+                for (int i = 0; i < imageUrls.length && i < 2; i++) ...[
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: Container(
+                        height: 110,
+                        color: const Color(0xFF1C1B1B),
+                        child: Opacity(
+                          opacity: 0.9,
+                          child: CachedNetworkImage(
+                            imageUrl: imageUrls[i],
+                            fit: BoxFit.cover,
+                            errorWidget: (context, url, error) => const ColoredBox(color: Color(0xFF201F1F)),
+                          ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                if (i != images.length - 1) const SizedBox(width: 16),
+                  if (i != imageUrls.length - 1 && imageUrls.length > 1) const SizedBox(width: 16),
+                ],
               ],
-            ],
-          ),
+            ),
           const SizedBox(height: 16),
           GestureDetector(
             onTap: onViewDetails,

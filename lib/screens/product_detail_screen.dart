@@ -1,32 +1,58 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'product_reviews_screen.dart';
 import 'size_guide_screen.dart';
 import 'notifications_screen.dart';
 import 'search_discovery_screen.dart';
 import 'shopping_bag_screen.dart';
-import 'wishlist_screen.dart';
+import '../data/models/product.dart';
+import '../state/providers.dart';
+import '../utils/format.dart';
+import '../widgets/product_network_image.dart';
 
 /// Product Detail (13) — matches the provided Figma/PNG layout.
 class ProductDetailScreen extends StatefulWidget {
-  const ProductDetailScreen({super.key});
+  const ProductDetailScreen({super.key, required this.product});
+
+  final Product product;
 
   @override
   State<ProductDetailScreen> createState() => _ProductDetailScreenState();
 }
 
 class _ProductDetailScreenState extends State<ProductDetailScreen> {
-  int _selectedSize = 1; // IT 38
+  static const _sizes = ['S', 'M', 'L', 'XL', 'XXL'];
+
+  int _selectedSize = 2; // L
   int _selectedColor = 0;
+  int _selectedImage = 0;
 
   static const _bg = Color(0xFF080808);
 
   static const _overlayMaxW = 520.0;
   static const _overlayMinW = 390.0;
+
+  List<String> get _gallery => widget.product.galleryForColor(_selectedColor);
+
+  String get _heroUrl {
+    final g = _gallery;
+    if (g.isEmpty) return widget.product.primaryImageUrl;
+    return g[_selectedImage.clamp(0, g.length - 1)];
+  }
+
+  void _onColorSelected(int index) {
+    setState(() {
+      _selectedColor = index;
+      _selectedImage = 0;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -48,10 +74,18 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       child: Stack(
                         children: [
                           Positioned.fill(
-                            child: Opacity(
-                              opacity: 0.95,
-                              child: Image.asset('assets/images/pd_valentino_gown.png', fit: BoxFit.cover),
-                            ),
+                            child: _heroUrl.isEmpty
+                                ? Image.asset('assets/images/search_edit_quiet.png', fit: BoxFit.cover)
+                                : ProductNetworkImage(
+                                    key: ValueKey('$_heroUrl-$_selectedColor-$_selectedImage'),
+                                    imageUrl: _heroUrl,
+                                    fit: BoxFit.cover,
+                                    opacity: 0.95,
+                                    fallbackAsset: ProductNetworkImage.fallbackAssetFor(
+                                      widget.product.id,
+                                      widget.product.categoryId,
+                                    ),
+                                  ),
                           ),
                           const Positioned.fill(
                             child: DecoratedBox(
@@ -66,19 +100,40 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             ),
                           ),
                           const Positioned(left: 0, right: 0, top: 0, child: SafeArea(bottom: false, child: _TopBar())),
-                          const Positioned(left: 24, bottom: 24 + 128, child: _FilmstripLeft()),
-                          const Positioned(right: 24, bottom: 24 + 128, child: _HeartRight()),
-                          const Positioned(left: 24, right: 24, bottom: 24, child: _BottomCtas()),
+                          Positioned(
+                            left: 24,
+                            bottom: 24 + 128,
+                            child: _FilmstripLeft(
+                              imageUrls: _gallery,
+                              selectedIndex: _selectedImage,
+                              onSelect: (i) => setState(() => _selectedImage = i),
+                              fallbackAsset: ProductNetworkImage.fallbackAssetFor(
+                                widget.product.id,
+                                widget.product.categoryId,
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            left: 24,
+                            right: 24,
+                            bottom: 24,
+                            child: _BottomCtas(
+                              product: widget.product,
+                              selectedSize: _selectedSize,
+                              selectedColor: _selectedColor,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ),
                   SliverToBoxAdapter(
                     child: _DetailsCard(
+                      product: widget.product,
                       selectedSize: _selectedSize,
                       onSelectSize: (i) => setState(() => _selectedSize = i),
                       selectedColor: _selectedColor,
-                      onSelectColor: (i) => setState(() => _selectedColor = i),
+                      onSelectColor: _onColorSelected,
                     ),
                   ),
                   const SliverToBoxAdapter(child: SizedBox(height: 24)),
@@ -182,28 +237,55 @@ class _TopBar extends StatelessWidget {
 }
 
 class _FilmstripLeft extends StatelessWidget {
-  const _FilmstripLeft();
+  const _FilmstripLeft({
+    required this.imageUrls,
+    required this.selectedIndex,
+    required this.onSelect,
+    required this.fallbackAsset,
+  });
+
+  final List<String> imageUrls;
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+  final String fallbackAsset;
 
   @override
   Widget build(BuildContext context) {
-    Widget thumb({required bool active}) => Container(
-          width: 48,
-          height: 64,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(6),
-            border: Border.all(
-              color: active ? const Color(0xFFB8963E) : const Color.fromRGBO(245, 240, 232, 0.3),
-              width: active ? 2 : 1,
+    final total = imageUrls.length;
+    final counter = total == 0 ? '—' : '${(selectedIndex + 1).toString().padLeft(2, '0')} / ${total.toString().padLeft(2, '0')}';
+
+    Widget thumb({required int index, required bool active, required String url}) => GestureDetector(
+          onTap: () => onSelect(index),
+          child: Container(
+            width: 48,
+            height: 64,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(
+                color: active ? const Color(0xFFB8963E) : const Color.fromRGBO(245, 240, 232, 0.3),
+                width: active ? 2 : 1,
+              ),
             ),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: Opacity(
-              opacity: active ? 1 : 0.6,
-              child: Image.asset('assets/images/pd_valentino_gown.png', fit: BoxFit.cover),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Opacity(
+                opacity: active ? 1 : 0.6,
+                child: ProductNetworkImage(
+                  imageUrl: url,
+                  fit: BoxFit.cover,
+                  height: 64,
+                  width: 48,
+                  fallbackAsset: fallbackAsset,
+                ),
+              ),
             ),
           ),
         );
+
+    final n = imageUrls.length;
+    const window = 3;
+    final start = n <= window ? 0 : (selectedIndex - 1).clamp(0, n - window);
+    final visible = n <= window ? imageUrls : imageUrls.sublist(start, start + window);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -216,7 +298,7 @@ class _FilmstripLeft extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               color: const Color.fromRGBO(0, 0, 0, 0.4),
               child: Text(
-                '02 / 06',
+                counter,
                 style: GoogleFonts.poppins(
                   fontSize: 14,
                   height: 20 / 14,
@@ -227,56 +309,35 @@ class _FilmstripLeft extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 12),
-        thumb(active: false),
-        const SizedBox(height: 12),
-        thumb(active: true),
-        const SizedBox(height: 12),
-        thumb(active: false),
+        if (visible.isEmpty) const SizedBox.shrink() else ...[
+          const SizedBox(height: 12),
+          for (var i = 0; i < visible.length; i++) ...[
+            if (i > 0) const SizedBox(height: 12),
+            thumb(
+              index: start + i,
+              active: start + i == selectedIndex,
+              url: visible[i],
+            ),
+          ],
+        ],
       ],
     );
   }
 }
 
-class _HeartRight extends StatelessWidget {
-  const _HeartRight();
+class _BottomCtas extends ConsumerWidget {
+  const _BottomCtas({
+    required this.product,
+    required this.selectedSize,
+    required this.selectedColor,
+  });
+
+  final Product product;
+  final int selectedSize;
+  final int selectedColor;
 
   @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(9999),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-        child: GestureDetector(
-          onTap: () {
-            Navigator.of(context).push(MaterialPageRoute(builder: (_) => const WishlistScreen()));
-          },
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: Color.fromRGBO(255, 255, 255, 0.0),
-              boxShadow: [
-                BoxShadow(color: Color.fromRGBO(184, 150, 62, 0.1), blurRadius: 40, offset: Offset(0, 10)),
-              ],
-            ),
-            child: SvgPicture.asset(
-              'assets/images/icon_heart_fill.svg',
-              width: 19,
-              height: 17,
-              colorFilter: const ColorFilter.mode(Color(0xFFF5F0E8), BlendMode.srcIn),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _BottomCtas extends StatelessWidget {
-  const _BottomCtas();
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -293,8 +354,46 @@ class _BottomCtas extends StatelessWidget {
             color: Colors.transparent,
             child: InkWell(
               borderRadius: BorderRadius.circular(9999),
-              onTap: () {
-                Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ShoppingBagScreen()));
+              onTap: () async {
+                final user = ref.read(currentUserProvider);
+                if (user == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please sign in to add items to your bag.')),
+                  );
+                  return;
+                }
+
+                final sizes = _ProductDetailScreenState._sizes;
+                final size = selectedSize < sizes.length ? sizes[selectedSize] : sizes[2];
+                final color = product.colorVariants.isNotEmpty && selectedColor < product.colorVariants.length
+                    ? product.colorVariants[selectedColor].name
+                    : 'Default';
+
+                try {
+                  final cart = ref.read(cartRepositoryProvider);
+                  if (cart == null) {
+                    if (!context.mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Bag sync is unavailable on Windows desktop. Use Android or Chrome.'),
+                      ),
+                    );
+                    return;
+                  }
+                  await cart.addOrIncrement(
+                        uid: user.uid,
+                        product: product,
+                        qty: 1,
+                        variant: {'size': size, 'color': color},
+                      );
+                  if (!context.mounted) return;
+                  Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ShoppingBagScreen()));
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not add to bag. ${e.toString()}')),
+                  );
+                }
               },
               child: Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
@@ -315,21 +414,30 @@ class _BottomCtas extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-        Container(
-          width: double.infinity,
-          decoration: BoxDecoration(
-            border: Border.all(color: const Color.fromRGBO(229, 231, 235, 0.6), width: 1),
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
             borderRadius: BorderRadius.circular(9999),
-          ),
-          padding: const EdgeInsets.symmetric(vertical: 17),
-          alignment: Alignment.center,
-          child: Text(
-            'RESERVE IN BOUTIQUE',
-            style: GoogleFonts.poppins(
-              fontSize: 14,
-              height: 20 / 14,
-              letterSpacing: 1.4,
-              color: const Color(0xFFF5F0E8),
+            onTap: () => _showReserveInBoutiqueSheet(context, product, selectedSize, selectedColor),
+            child: Ink(
+              decoration: BoxDecoration(
+                border: Border.all(color: const Color.fromRGBO(229, 231, 235, 0.6), width: 1),
+                borderRadius: BorderRadius.circular(9999),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 17),
+                child: Center(
+                  child: Text(
+                    'RESERVE IN BOUTIQUE',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      height: 20 / 14,
+                      letterSpacing: 1.4,
+                      color: const Color(0xFFF5F0E8),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
@@ -338,23 +446,151 @@ class _BottomCtas extends StatelessWidget {
   }
 }
 
+/// NOLIMIT partner line — same public contact as catalogue [retailerUrl] seeds.
+Future<void> _showReserveInBoutiqueSheet(
+  BuildContext context,
+  Product product,
+  int selectedSize,
+  int selectedColor,
+) async {
+  final sizes = _ProductDetailScreenState._sizes;
+  final size = selectedSize < sizes.length ? sizes[selectedSize] : sizes[2];
+  final color = product.colorVariants.isNotEmpty && selectedColor < product.colorVariants.length
+      ? product.colorVariants[selectedColor].name
+      : 'Default';
+  final storeUri = Uri.tryParse(product.retailerUrl ?? '') ?? Uri.parse('https://www.nolimit.lk/');
+  final nolimitCareTel = Uri.parse('tel:+94773540816');
+
+  await showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: const Color(0xFF2A2420),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+    ),
+    builder: (ctx) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color.fromRGBO(184, 150, 62, 0.45),
+                    borderRadius: BorderRadius.circular(9999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Reserve in boutique',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.bodoniModa(
+                  fontSize: 22,
+                  height: 28 / 22,
+                  color: const Color(0xFFF5F0E8),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${product.brand} · ${product.name}\nSize $size · $color',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.plusJakartaSans(
+                  fontSize: 13,
+                  height: 1.4,
+                  color: const Color(0xFFD0C5B2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFB8963E),
+                  foregroundColor: const Color(0xFF2A2420),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () async {
+                  try {
+                    await launchUrl(nolimitCareTel);
+                  } catch (_) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        const SnackBar(content: Text('Could not start the phone app. Call +94 77 354 0816.')),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.phone_outlined, size: 20),
+                label: Text('Call NOLIMIT', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFF5F0E8),
+                  side: const BorderSide(color: Color.fromRGBO(229, 231, 235, 0.35)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () async {
+                  try {
+                    await launchUrl(storeUri, mode: LaunchMode.externalApplication);
+                  } catch (_) {
+                    if (ctx.mounted) {
+                      ScaffoldMessenger.of(ctx).showSnackBar(
+                        SnackBar(content: Text('Open this link in a browser:\n$storeUri')),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.open_in_new_rounded, size: 20),
+                label: Text('Open store website', style: GoogleFonts.poppins(fontWeight: FontWeight.w500)),
+              ),
+              const SizedBox(height: 10),
+              TextButton(
+                onPressed: () async {
+                  final text =
+                      'Reserve: ${product.brand} ${product.name}\nSize $size · Color $color\n${formatMoney(product.price, currency: product.currency)}\n$storeUri';
+                  await Clipboard.setData(ClipboardData(text: text));
+                  if (!ctx.mounted) return;
+                  Navigator.of(ctx).pop();
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Reservation details copied — paste in chat, email, or DM.')),
+                  );
+                },
+                child: Text(
+                  'Copy details for concierge',
+                  style: GoogleFonts.poppins(fontSize: 13, color: const Color(0xFFB8963E)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
 class _DetailsCard extends StatelessWidget {
   const _DetailsCard({
+    required this.product,
     required this.selectedSize,
     required this.onSelectSize,
     required this.selectedColor,
     required this.onSelectColor,
   });
 
+  final Product product;
   final int selectedSize;
   final ValueChanged<int> onSelectSize;
   final int selectedColor;
   final ValueChanged<int> onSelectColor;
 
-  static const _sizes = ['IT 36', 'IT 38', 'IT 40', 'IT 42', 'IT 44'];
-
   @override
   Widget build(BuildContext context) {
+    final sizes = _ProductDetailScreenState._sizes;
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
       decoration: const BoxDecoration(
@@ -375,7 +611,7 @@ class _DetailsCard extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           Text(
-            'VALENTINO',
+            product.brand.toUpperCase(),
             style: GoogleFonts.poppins(
               fontSize: 12,
               height: 16 / 12,
@@ -385,7 +621,7 @@ class _DetailsCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Silk Crepe De Chine\nEvening Gown',
+            product.name,
             textAlign: TextAlign.center,
             style: GoogleFonts.bodoniModa(
               fontSize: 30,
@@ -393,6 +629,18 @@ class _DetailsCard extends StatelessWidget {
               letterSpacing: 0.75,
               color: const Color(0xFFF5F0E8),
             ),
+          ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () {
+              final msg = '${product.brand} — ${product.name}\n${formatMoney(product.price, currency: product.currency)}';
+              Clipboard.setData(ClipboardData(text: msg));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Product details copied to clipboard')),
+              );
+            },
+            icon: const Icon(Icons.ios_share_rounded, size: 18, color: Color(0xFFB8963E)),
+            label: Text('SHARE', style: GoogleFonts.manrope(fontSize: 12, letterSpacing: 1.2, color: const Color(0xFFB8963E))),
           ),
           const SizedBox(height: 10),
           Row(
@@ -428,17 +676,25 @@ class _DetailsCard extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Text(
-            'SGD 8,900',
-            style: GoogleFonts.bodoniModa(fontSize: 30, height: 36 / 30, letterSpacing: 3, color: const Color(0xFFB8963E)),
+            formatMoney(product.price, currency: product.currency),
+            style: GoogleFonts.bodoniModa(fontSize: 30, height: 36 / 30, letterSpacing: 1, color: const Color(0xFFB8963E)),
           ),
-          const SizedBox(height: 16),
-          Opacity(
-            opacity: 0.9,
-            child: Text(
-              'A masterclass in effortless elegance. This floor-\nsweeping gown is crafted from fluid silk crepe de\nchine, featuring a dramatic plunge neckline and\ndelicate pleated details that cascade down the\nasymmetrical hemline.',
-              style: GoogleFonts.cormorantGaramond(fontSize: 18, height: 29.25 / 18, color: const Color(0xFFF5F0E8)),
+          if (product.retailerUrl != null && product.retailerUrl!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Inspired by ${product.brand} · nolimit.lk',
+              style: GoogleFonts.poppins(fontSize: 11, color: const Color(0xFF9A8F80)),
             ),
-          ),
+          ],
+          const SizedBox(height: 16),
+          if (product.description.isNotEmpty)
+            Opacity(
+              opacity: 0.9,
+              child: Text(
+                product.description,
+                style: GoogleFonts.cormorantGaramond(fontSize: 18, height: 29.25 / 18, color: const Color(0xFFF5F0E8)),
+              ),
+            ),
           const SizedBox(height: 28),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -468,11 +724,11 @@ class _DetailsCard extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                for (int i = 0; i < _sizes.length; i++)
+                for (int i = 0; i < sizes.length; i++)
                   Padding(
                     padding: const EdgeInsets.only(right: 12),
                     child: _SizePill(
-                      label: _sizes[i],
+                      label: sizes[i],
                       selected: i == selectedSize,
                       onTap: () => onSelectSize(i),
                     ),
@@ -489,15 +745,25 @@ class _DetailsCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          Row(
-            children: [
-              _Swatch(color: const Color(0xFF111111), selected: selectedColor == 0, onTap: () => onSelectColor(0)),
-              const SizedBox(width: 16),
-              _Swatch(color: const Color(0xFF8A2A2B), selected: selectedColor == 1, onTap: () => onSelectColor(1)),
-              const SizedBox(width: 16),
-              _Swatch(color: const Color(0xFFE5E0D8), selected: selectedColor == 2, onTap: () => onSelectColor(2)),
-            ],
-          ),
+          if (product.colorVariants.isEmpty)
+            Text(
+              'One colour available',
+              style: GoogleFonts.poppins(fontSize: 12, color: const Color(0xFF9A8F80)),
+            )
+          else
+            Wrap(
+              spacing: 16,
+              runSpacing: 12,
+              children: [
+                for (var i = 0; i < product.colorVariants.length; i++)
+                  _ColorChip(
+                    label: product.colorVariants[i].name,
+                    color: product.colorAt(i) ?? const Color(0xFF111111),
+                    selected: selectedColor == i,
+                    onTap: () => onSelectColor(i),
+                  ),
+              ],
+            ),
           const SizedBox(height: 24),
           const _AccordionRow(label: 'COMPOSITION & CARE'),
           const _AccordionRow(label: "EDITOR'S NOTES"),
@@ -544,8 +810,15 @@ class _SizePill extends StatelessWidget {
   }
 }
 
-class _Swatch extends StatelessWidget {
-  const _Swatch({required this.color, required this.selected, required this.onTap});
+class _ColorChip extends StatelessWidget {
+  const _ColorChip({
+    required this.label,
+    required this.color,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
   final Color color;
   final bool selected;
   final VoidCallback onTap;
@@ -554,15 +827,29 @@ class _Swatch extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(9999),
-          border: selected ? Border.all(color: const Color(0xFFB8963E), width: 2) : null,
-          boxShadow: selected ? const [BoxShadow(color: Color.fromRGBO(184, 150, 62, 0.2), blurRadius: 10)] : null,
-        ),
+      child: Column(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(9999),
+              border: Border.all(
+                color: selected ? const Color(0xFFB8963E) : const Color.fromRGBO(245, 240, 232, 0.25),
+                width: selected ? 2 : 1,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 10,
+              color: selected ? const Color(0xFFB8963E) : const Color(0xFF9A8F80),
+            ),
+          ),
+        ],
       ),
     );
   }

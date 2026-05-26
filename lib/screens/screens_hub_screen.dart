@@ -22,6 +22,7 @@ import 'wishlist_screen.dart';
 import 'checkout_delivery_screen.dart';
 import 'checkout_payment_screen.dart';
 import 'checkout_review_screen.dart';
+import '../data/models/product.dart';
 
 class ScreensHubScreen extends StatelessWidget {
   const ScreensHubScreen({super.key});
@@ -36,9 +37,25 @@ class ScreensHubScreen extends StatelessWidget {
       _HubItem('05 Reset Password', const ResetPasswordScreen()),
       _HubItem('08 Home', const HomeScreen()),
       _HubItem('09 Search & Discovery', const SearchDiscoveryScreen()),
-      _HubItem('11 Category Landing', const CategoryLandingScreen()),
+      _HubItem('11 Category Landing (Men)', const CategoryLandingScreen(departmentId: 'men')),
+      _HubItem('11b Category Landing (Women)', const CategoryLandingScreen(departmentId: 'women')),
       _HubItem('12 Product Listing', const ProductListingScreen()),
-      _HubItem('13 Product Detail', const ProductDetailScreen()),
+      _HubItem(
+        '13 Product Detail',
+        ProductDetailScreen(
+          product: const Product(
+            id: 'preview',
+            name: 'Preview Product',
+            brand: 'ATELIER',
+            categoryId: '',
+            price: 0,
+            currency: '',
+            imageUrls: <String>[],
+            description: '',
+            isFeatured: false,
+          ),
+        ),
+      ),
       _HubItem('14 Size Guide', const SizeGuideScreen()),
       _HubItem('15 Product Reviews', const ProductReviewsScreen()),
       _HubItem('16 Shopping Bag', const ShoppingBagScreen()),

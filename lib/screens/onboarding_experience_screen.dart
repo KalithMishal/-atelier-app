@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'splash_screen.dart';
 import 'onboarding_belong_screen.dart';
-import 'register_screen.dart';
 
 class OnboardingExperienceScreen extends StatelessWidget {
   const OnboardingExperienceScreen({super.key});
@@ -41,58 +41,6 @@ class OnboardingExperienceScreen extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [Color.fromRGBO(19, 19, 19, 0.0), Color(0xFF131313)],
-              ),
-            ),
-          ),
-          SafeArea(
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      icon: SvgPicture.asset(
-                        'assets/images/icon_onb_close_alt.svg',
-                        width: 12.62,
-                        height: 12.62,
-                        colorFilter: const ColorFilter.mode(Color(0xFFE9C349), BlendMode.srcIn),
-                      ),
-                    ),
-                    Text(
-                      'THE ATELIER',
-                      style: GoogleFonts.libreBaskerville(
-                        fontSize: 20,
-                        height: 28 / 20,
-                        letterSpacing: 2,
-                        color: const Color(0xFFE9C349),
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                    Opacity(
-                      opacity: 0.6,
-                      child: TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                          );
-                        },
-                        child: Text(
-                          'SKIP',
-                          style: GoogleFonts.manrope(
-                            fontSize: 12,
-                            height: 16 / 12,
-                            letterSpacing: 2.4,
-                            color: const Color(0xFFB5983C),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
             ),
           ),
@@ -171,6 +119,55 @@ class OnboardingExperienceScreen extends StatelessWidget {
                   ),
                 );
               },
+            ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: SvgPicture.asset(
+                        'assets/images/icon_onb_close_alt.svg',
+                        width: 12.62,
+                        height: 12.62,
+                        colorFilter: const ColorFilter.mode(Color(0xFFE9C349), BlendMode.srcIn),
+                      ),
+                    ),
+                    Text(
+                      'THE ATELIER',
+                      style: GoogleFonts.libreBaskerville(
+                        fontSize: 20,
+                        height: 28 / 20,
+                        letterSpacing: 2,
+                        color: const Color(0xFFE9C349),
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(builder: (_) => const SplashScreen()),
+                        );
+                      },
+                      child: Text(
+                        'SKIP',
+                        style: GoogleFonts.manrope(
+                          fontSize: 12,
+                          height: 16 / 12,
+                          letterSpacing: 2.4,
+                          color: const Color(0xFFB5983C),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],

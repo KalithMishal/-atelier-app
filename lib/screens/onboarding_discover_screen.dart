@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'splash_screen.dart';
 import 'onboarding_experience_screen.dart';
-import 'register_screen.dart';
 
 class OnboardingDiscoverScreen extends StatelessWidget {
   const OnboardingDiscoverScreen({super.key});
@@ -62,7 +62,7 @@ class OnboardingDiscoverScreen extends StatelessWidget {
                       TextButton(
                         onPressed: () {
                           Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                            MaterialPageRoute(builder: (_) => const SplashScreen()),
                           );
                         },
                         child: Text(

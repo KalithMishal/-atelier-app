@@ -5,7 +5,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'register_screen.dart';
+import 'home_screen.dart';
 import 'login_screen.dart';
+import 'splash_screen.dart';
 
 class OnboardingBelongScreen extends StatelessWidget {
   const OnboardingBelongScreen({super.key});
@@ -36,60 +38,8 @@ class OnboardingBelongScreen extends StatelessWidget {
             ),
           ),
           SafeArea(
-            child: Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    IconButton(
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      icon: SvgPicture.asset(
-                        'assets/images/icon_onb_belong_close.svg',
-                        width: 12.62,
-                        height: 12.62,
-                        colorFilter: const ColorFilter.mode(Color(0xFFE9C349), BlendMode.srcIn),
-                      ),
-                    ),
-                    Text(
-                      'ATELIER',
-                      style: GoogleFonts.libreBaskerville(
-                        fontSize: 20,
-                        height: 28 / 20,
-                        letterSpacing: 2,
-                        color: const Color(0xFFE9C349),
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                    Opacity(
-                      opacity: 0.9,
-                      child: TextButton(
-                        onPressed: () {
-                          Navigator.of(context).pushReplacement(
-                            MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                          );
-                        },
-                        child: Text(
-                          'SKIP',
-                          style: GoogleFonts.manrope(
-                            fontSize: 12,
-                            height: 16 / 12,
-                            letterSpacing: 2.4,
-                            color: const Color(0xFFB5983C),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(32, 30.88, 32, 48),
+              padding: const EdgeInsets.fromLTRB(32, 24, 32, 48),
               child: Column(
                 children: [
                   const SizedBox(height: 0),
@@ -160,6 +110,23 @@ class OnboardingBelongScreen extends StatelessWidget {
                                 );
                               },
                             ),
+                            const SizedBox(height: 12),
+                            GestureDetector(
+                              onTap: () {
+                                Navigator.of(context).pushReplacement(
+                                  MaterialPageRoute(builder: (_) => const HomeScreen()),
+                                );
+                              },
+                              child: Text(
+                                'BROWSE THE STORE',
+                                style: GoogleFonts.manrope(
+                                  fontSize: 12,
+                                  letterSpacing: 1.2,
+                                  color: const Color(0xFFB5983C),
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ),
                             const SizedBox(height: 24),
                             Opacity(
                               opacity: 0.4,
@@ -206,6 +173,55 @@ class OnboardingBelongScreen extends StatelessWidget {
                     ],
                   ),
                 ],
+              ),
+            ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      icon: SvgPicture.asset(
+                        'assets/images/icon_onb_belong_close.svg',
+                        width: 12.62,
+                        height: 12.62,
+                        colorFilter: const ColorFilter.mode(Color(0xFFE9C349), BlendMode.srcIn),
+                      ),
+                    ),
+                    Text(
+                      'ATELIER',
+                      style: GoogleFonts.libreBaskerville(
+                        fontSize: 20,
+                        height: 28 / 20,
+                        letterSpacing: 2,
+                        color: const Color(0xFFE9C349),
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(context).pushReplacement(
+                          MaterialPageRoute(builder: (_) => const SplashScreen()),
+                        );
+                      },
+                      child: Text(
+                        'SKIP',
+                        style: GoogleFonts.manrope(
+                          fontSize: 12,
+                          height: 16 / 12,
+                          letterSpacing: 2.4,
+                          color: const Color(0xFFB5983C),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

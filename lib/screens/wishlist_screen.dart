@@ -1,24 +1,31 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import 'home_screen.dart';
-import 'product_listing_screen.dart';
-import 'profile_screen.dart';
+import 'login_screen.dart';
 import 'notifications_screen.dart';
+import 'product_detail_screen.dart';
 import 'search_discovery_screen.dart';
 import 'shopping_bag_screen.dart';
+import '../data/local_catalogue.dart';
+import '../data/models/wishlist_item.dart';
+import '../state/providers.dart';
+import '../utils/format.dart';
+import '../widgets/atelier_bottom_nav.dart';
+import '../widgets/product_network_image.dart';
+import '../data/fashion_image_urls.dart';
 
-class WishlistScreen extends StatefulWidget {
+class WishlistScreen extends ConsumerStatefulWidget {
   const WishlistScreen({super.key});
 
   @override
-  State<WishlistScreen> createState() => _WishlistScreenState();
+  ConsumerState<WishlistScreen> createState() => _WishlistScreenState();
 }
 
-class _WishlistScreenState extends State<WishlistScreen> {
+class _WishlistScreenState extends ConsumerState<WishlistScreen> {
   static const _bg = Color(0xFF080808);
   static const _topBarBg = Color(0xFF080808);
   static const _text = Color(0xFFF5F0E8);
@@ -30,39 +37,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
   final int _activeBottomIndex = 2;
 
-  final _items = const [
-    _WishItem(
-      "L'ÉDITION",
-      'The Bias Cut\nSilk Column…\nDress',
-      '\$ 1,250',
-      true,
-      'assets/images/wish_silk_slip_dress.png',
-    ),
-    _WishItem(
-      'MAISON NOIR',
-      'Architectural\nCalfskin Tote',
-      '\$ 2,800',
-      false,
-      'assets/images/wish_structured_tote.png',
-    ),
-    _WishItem(
-      'AURA BIJOUX',
-      'Molten Gold\nStatement…\nHoops',
-      '\$ 850',
-      false,
-      'assets/images/wish_gold_earrings.png',
-    ),
-    _WishItem(
-      'VANGUARD',
-      'Oversized\nCashmere…\nOvercoat',
-      '\$ 3,400',
-      true,
-      'assets/images/wish_cashmere_trench.png',
-    ),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final user = ref.watch(currentUserProvider);
+    final wishlistAsync = ref.watch(wishlistItemsProvider);
     return Scaffold(
       backgroundColor: _bg,
       body: SafeArea(
@@ -99,7 +77,11 @@ class _WishlistScreenState extends State<WishlistScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  '(12 PIECES)',
+                                  wishlistAsync.when(
+                                    data: (items) => '(${items.length} PIECES)',
+                                    loading: () => '(…)',
+                                    error: (_, __) => '',
+                                  ),
                                   style: GoogleFonts.plusJakartaSans(
                                     fontSize: 14,
                                     height: 20 / 14,
@@ -125,28 +107,44 @@ class _WishlistScreenState extends State<WishlistScreen> {
                         const SizedBox(height: 16),
                         Container(height: 1, width: double.infinity, color: _separator),
                         const SizedBox(height: 24),
-                        GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _items.length,
-                          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            mainAxisSpacing: 16,
-                            crossAxisSpacing: 16,
-                            childAspectRatio: 1 / 1.68,
+                        if (user == null)
+                          _GuestWishlistPrompt(accent: _accent, muted: _muted)
+                        else
+                          wishlistAsync.when(
+                            data: (items) {
+                              if (items.isEmpty) {
+                                return Text(
+                                  'Save items from product pages with the heart icon.',
+                                  style: GoogleFonts.manrope(fontSize: 14, color: _muted, height: 22 / 14),
+                                );
+                              }
+                              return GridView.builder(
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                itemCount: items.length,
+                                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 2,
+                                  mainAxisSpacing: 16,
+                                  crossAxisSpacing: 16,
+                                  childAspectRatio: 1 / 1.68,
+                                ),
+                                itemBuilder: (context, index) => _FirestoreWishCard(
+                                  item: items[index],
+                                  card: _card,
+                                  accent: _accent,
+                                  text: _text,
+                                  onRemove: () {
+                                    final w = ref.read(wishlistRepositoryProvider);
+                                    if (w == null) return;
+                                    w.remove(user.uid, items[index].productId);
+                                  },
+                                  onOpen: () => _openProduct(context, items[index].productId),
+                                ),
+                              );
+                            },
+                            loading: () => const Center(child: CircularProgressIndicator()),
+                            error: (e, _) => Text('Could not load wishlist.', style: GoogleFonts.manrope(color: _muted)),
                           ),
-                          itemBuilder: (context, index) {
-                            final item = _items[index];
-                            return _WishlistCard(
-                              item: item,
-                              card: _card,
-                              imageBg: const Color(0xFF0E0E0E),
-                              accent: _accent,
-                              accentSoft: _accentSoft,
-                              text: _text,
-                            );
-                          },
-                        ),
                         const SizedBox(height: 96),
                           ],
                         ),
@@ -161,10 +159,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
                   child: SafeArea(
                     top: false,
                     child: Center(
-                      child: _BottomNavBar(
+                      child: AtelierBottomNavBar.dock(
                         activeIndex: _activeBottomIndex,
                         onTap: (idx) => _navigateBottom(context, idx),
-                        accent: const Color(0xFFE9C349),
                       ),
                     ),
                   ),
@@ -179,24 +176,108 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
   void _navigateBottom(BuildContext context, int idx) {
     if (idx == _activeBottomIndex) return;
-    Widget target;
-    switch (idx) {
-      case 0:
-        target = const HomeScreen();
-        break;
-      case 1:
-        target = const ProductListingScreen();
-        break;
-      case 2:
-        target = const WishlistScreen();
-        break;
-      case 3:
-        target = const ProfileScreen();
-        break;
-      default:
-        target = const HomeScreen();
-    }
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => target));
+    AtelierBottomNav.go(context, idx);
+  }
+
+  Future<void> _openProduct(BuildContext context, String productId) async {
+    final repo = ref.read(productRepositoryProvider);
+    final product = repo != null ? await repo.getById(productId) : LocalCatalogue.productById(productId);
+    if (!context.mounted || product == null) return;
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => ProductDetailScreen(product: product)));
+  }
+}
+
+class _GuestWishlistPrompt extends StatelessWidget {
+  const _GuestWishlistPrompt({required this.accent, required this.muted});
+  final Color accent;
+  final Color muted;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Sign in to save favourites across devices.', style: GoogleFonts.manrope(fontSize: 14, color: muted, height: 22 / 14)),
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const LoginScreen())),
+          style: FilledButton.styleFrom(backgroundColor: accent, foregroundColor: const Color(0xFF2A2420)),
+          child: const Text('SIGN IN'),
+        ),
+      ],
+    );
+  }
+}
+
+class _FirestoreWishCard extends StatelessWidget {
+  const _FirestoreWishCard({
+    required this.item,
+    required this.card,
+    required this.accent,
+    required this.text,
+    required this.onRemove,
+    required this.onOpen,
+  });
+
+  final WishlistItem item;
+  final Color card;
+  final Color accent;
+  final Color text;
+  final VoidCallback onRemove;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onOpen,
+      child: Container(
+        color: card,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  ColoredBox(
+                    color: const Color(0xFF0E0E0E),
+                    child: item.imageUrl.isNotEmpty
+                        ? ProductNetworkImage(
+                            imageUrl: item.imageUrl,
+                            fit: BoxFit.cover,
+                            fallbackAsset: fallbackForProduct(
+                              item.productId,
+                              LocalCatalogue.productById(item.productId)?.categoryId,
+                            ),
+                          )
+                        : const SizedBox.shrink(),
+                  ),
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: GestureDetector(
+                      onTap: onRemove,
+                      child: const Icon(Icons.favorite_rounded, size: 20, color: Color(0xFFE9C349)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item.brand.toUpperCase(), style: GoogleFonts.manrope(fontSize: 9, letterSpacing: 1, color: const Color(0xFF8A8278)), maxLines: 1, overflow: TextOverflow.ellipsis),
+                  Text(item.name, style: GoogleFonts.manrope(fontSize: 12, color: text), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  Text(formatMoney(item.price, currency: item.currency), style: GoogleFonts.manrope(fontSize: 12, color: accent, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -413,120 +494,6 @@ class _WishlistCard extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _BottomNavBar extends StatelessWidget {
-  const _BottomNavBar({
-    required this.activeIndex,
-    required this.onTap,
-    required this.accent,
-  });
-
-  final int activeIndex;
-  final ValueChanged<int> onTap;
-  final Color accent;
-
-  @override
-  Widget build(BuildContext context) {
-    // Compact centered pill style (matches Home).
-    const barWidth = 390.0;
-    const bg = Color.fromRGBO(42, 36, 32, 0.99);
-    const inactive = Color(0xFFE5E2E1);
-    const activeBg = Color(0xFFB8963E);
-    const activeIcon = Color(0xFF3C2F00);
-
-    return Container(
-      width: barWidth,
-      margin: const EdgeInsets.only(bottom: 0.2),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFFB8963E).withValues(alpha: 0.08),
-            blurRadius: 32,
-            offset: const Offset(0, -10),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-            color: bg,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _NavButton(
-                  active: activeIndex == 0,
-                  icon: Icons.home_rounded,
-                  onTap: () => onTap(0),
-                  activeBg: activeBg,
-                  iconColor: activeIndex == 0 ? activeIcon : inactive,
-                ),
-                _NavButton(
-                  active: activeIndex == 1,
-                  icon: Icons.grid_view_rounded,
-                  onTap: () => onTap(1),
-                  activeBg: activeBg,
-                  iconColor: activeIndex == 1 ? activeIcon : inactive,
-                ),
-                _NavButton(
-                  active: activeIndex == 2,
-                  icon: Icons.favorite_border_rounded,
-                  onTap: () => onTap(2),
-                  activeBg: activeBg,
-                  iconColor: activeIndex == 2 ? activeIcon : inactive,
-                ),
-                _NavButton(
-                  active: activeIndex == 3,
-                  icon: Icons.person_outline_rounded,
-                  onTap: () => onTap(3),
-                  activeBg: activeBg,
-                  iconColor: activeIndex == 3 ? activeIcon : inactive,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NavButton extends StatelessWidget {
-  const _NavButton({
-    required this.active,
-    required this.icon,
-    required this.onTap,
-    required this.activeBg,
-    required this.iconColor,
-  });
-
-  final bool active;
-  final IconData icon;
-  final VoidCallback onTap;
-  final Color activeBg;
-  final Color iconColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        height: 48,
-        width: 48,
-        decoration: BoxDecoration(
-          color: active ? activeBg : Colors.transparent,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        alignment: Alignment.center,
-        child: Icon(icon, color: iconColor, size: 22),
       ),
     );
   }

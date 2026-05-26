@@ -107,7 +107,10 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
                                       const SizedBox(height: 32),
                                       Container(height: 1, color: const Color.fromRGBO(78, 70, 57, 0.2)),
                                       const SizedBox(height: 24),
-                                      const _CardForm(),
+                                      if (_selected == 0)
+                                        const _CardForm()
+                                      else
+                                        _OtherPaymentHint(selection: _selected),
                                     ],
                                   ),
                                 ),
@@ -285,54 +288,105 @@ class _OptionTile extends StatelessWidget {
   }
 }
 
-class _CardForm extends StatelessWidget {
+/// Pre-filled demo values for the card fields (editable).
+class _CardForm extends StatefulWidget {
   const _CardForm();
+
+  @override
+  State<_CardForm> createState() => _CardFormState();
+}
+
+class _CardFormState extends State<_CardForm> {
+  static const _demoName = 'Valentina R. Okonkwo';
+  static const _demoNumber = '4242 4242 4242 4242';
+  static const _demoExpiry = '12 / 30';
+  static const _demoCvv = '123';
+
+  late final TextEditingController _name;
+  late final TextEditingController _number;
+  late final TextEditingController _expiry;
+  late final TextEditingController _cvv;
+
+  @override
+  void initState() {
+    super.initState();
+    _name = TextEditingController(text: _demoName);
+    _number = TextEditingController(text: _demoNumber);
+    _expiry = TextEditingController(text: _demoExpiry);
+    _cvv = TextEditingController(text: _demoCvv);
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _number.dispose();
+    _expiry.dispose();
+    _cvv.dispose();
+    super.dispose();
+  }
 
   Widget _label(String text) => Text(
         text,
         style: GoogleFonts.manrope(fontSize: 12, height: 16 / 12, letterSpacing: 1.2, color: const Color(0xFFD1C5B4)),
       );
 
-  Widget _input(String text, {Widget? trailing, TextAlign align = TextAlign.left, EdgeInsets? padding}) {
+  Widget _fieldShell({required Widget child}) {
     return Container(
-      padding: padding ?? const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-      decoration: const BoxDecoration(
-        color: Color(0xFF353534),
-        borderRadius: BorderRadius.only(topLeft: Radius.circular(2), topRight: Radius.circular(2)),
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF353534),
+        borderRadius: BorderRadius.circular(2),
+        border: Border.all(color: const Color.fromRGBO(78, 70, 57, 0.35)),
       ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              text,
-              textAlign: align,
-              style: GoogleFonts.manrope(fontSize: 16, color: const Color.fromRGBO(209, 197, 180, 0.3)),
-            ),
-          ),
-          trailing ?? const SizedBox(),
-        ],
-      ),
+      child: child,
     );
   }
 
+  InputDecoration _decoration({String? hint}) => InputDecoration(
+        isDense: true,
+        border: InputBorder.none,
+        hintText: hint,
+        hintStyle: GoogleFonts.manrope(fontSize: 16, color: const Color.fromRGBO(209, 197, 180, 0.28)),
+      );
+
   @override
   Widget build(BuildContext context) {
+    final fieldStyle = GoogleFonts.manrope(fontSize: 16, height: 22 / 16, color: const Color(0xFFE5E2E1));
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _label('NAME ON CARD'),
         const SizedBox(height: 8),
-        _input('JOHN DOE'),
+        _fieldShell(
+          child: TextField(
+            controller: _name,
+            textCapitalization: TextCapitalization.words,
+            style: fieldStyle,
+            decoration: _decoration(hint: _demoName),
+          ),
+        ),
         const SizedBox(height: 24),
         _label('CARD NUMBER'),
         const SizedBox(height: 8),
-        _input(
-          '0000 0000 0000 0000',
-          trailing: SvgPicture.asset('assets/images/icon_card_brand.svg', width: 19, height: 15),
-          padding: const EdgeInsets.fromLTRB(16, 13, 16, 13),
+        _fieldShell(
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _number,
+                  keyboardType: TextInputType.number,
+                  style: fieldStyle,
+                  decoration: _decoration(hint: _demoNumber),
+                ),
+              ),
+              SvgPicture.asset('assets/images/icon_card_brand.svg', width: 19, height: 15),
+            ],
+          ),
         ),
         const SizedBox(height: 24),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Expanded(
               child: Column(
@@ -340,7 +394,15 @@ class _CardForm extends StatelessWidget {
                 children: [
                   _label('EXPIRY'),
                   const SizedBox(height: 8),
-                  _input('MM/YY', align: TextAlign.center),
+                  _fieldShell(
+                    child: TextField(
+                      controller: _expiry,
+                      keyboardType: TextInputType.datetime,
+                      textAlign: TextAlign.center,
+                      style: fieldStyle,
+                      decoration: _decoration(hint: _demoExpiry),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -351,10 +413,22 @@ class _CardForm extends StatelessWidget {
                 children: [
                   _label('CVV'),
                   const SizedBox(height: 8),
-                  _input(
-                    '•••',
-                    align: TextAlign.center,
-                    trailing: SvgPicture.asset('assets/images/icon_cvv_info.svg', width: 11.08, height: 11.08),
+                  _fieldShell(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _cvv,
+                            keyboardType: TextInputType.number,
+                            maxLength: 4,
+                            textAlign: TextAlign.center,
+                            style: fieldStyle,
+                            decoration: _decoration(hint: _demoCvv).copyWith(counterText: ''),
+                          ),
+                        ),
+                        SvgPicture.asset('assets/images/icon_cvv_info.svg', width: 11.08, height: 11.08),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -362,6 +436,27 @@ class _CardForm extends StatelessWidget {
           ],
         ),
       ],
+    );
+  }
+}
+
+class _OtherPaymentHint extends StatelessWidget {
+  const _OtherPaymentHint({required this.selection});
+  final int selection;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = selection == 1
+        ? 'Apple Pay will open Wallet on the next step so you can authorize this purchase with Face ID, Touch ID, or your passcode.'
+        : 'PayPal will ask you to sign in and confirm the total before the order is placed.';
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 8, 4, 16),
+      child: Text(
+        text,
+        textAlign: TextAlign.center,
+        style: GoogleFonts.manrope(fontSize: 14, height: 22 / 14, color: const Color(0xFFD1C5B4)),
+      ),
     );
   }
 }
