@@ -47,3 +47,7 @@ app.*.map.json
 # Firebase local config (download from Console; do not commit to public repos)
 /android/app/google-services.json
 /ios/Runner/GoogleService-Info.plist
+
+# Microsoft Word lock / temp files
+~$*
+**/WRL*.tmp
